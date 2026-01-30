@@ -44,8 +44,9 @@ normal_mode_tests["normal_increment"] = function()
 	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
 	-- Oracle: content check
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 6 bar")
-	-- Oracle: cursor should stay on modified element (at col 4)
+	-- Oracle: cursor should stay on modified element (row 1, col 4)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 4)
 end
 
@@ -54,8 +55,9 @@ normal_mode_tests["normal_decrement"] = function()
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })
 	engine.execute("decrement", { visual = false, seqadd = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 4 bar")
-	-- Oracle: cursor should stay on modified element (at col 4)
+	-- Oracle: cursor should stay on modified element (row 1, col 4)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 4)
 end
 
@@ -64,8 +66,9 @@ normal_mode_tests["normal_custom_step"] = function()
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })
 	engine.execute("increment", { visual = false, seqadd = false, step = 5 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 15 bar")
-	-- Oracle: cursor should stay on modified element (at col 4)
+	-- Oracle: cursor should stay on modified element (row 1, col 4)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 4)
 end
 
@@ -87,6 +90,7 @@ normal_mode_tests["paren_no_change_when_cursor_inside_content"] = function()
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "(balabalabala)")
 	-- Oracle: cursor should remain at same position (no match, no move)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 5)
 end
 
@@ -132,8 +136,9 @@ visual_mode_tests["visual_single_line_multiple_matches"] = function()
 	vim.api.nvim_buf_set_mark(buf, ">", 1, 4, {})
 	engine.execute("increment", { visual = true, seqadd = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2 3 4")
-	-- Oracle: cursor should be on first match (col 0, which is "2")
+	-- Oracle: cursor should be on first match (row 1, col 0, which is "2")
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -179,8 +184,9 @@ seqadd_tests["seqadd_single_line_multiple_matches"] = function()
 	vim.api.nvim_buf_set_mark(buf, ">", 1, 4, {})
 	engine.execute("increment", { visual = true, seqadd = true, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2 4 6")
-	-- Oracle: cursor should be on first match (col 0, which is "2")
+	-- Oracle: cursor should be on first match (row 1, col 0, which is "2")
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -201,8 +207,9 @@ priority_tests["priority_hex_matches_first"] = function()
 	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
 	-- Hex has priority, should match 0x10 -> 0x11
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "0x11")
-	-- Oracle: cursor should stay on match (at col 0)
+	-- Oracle: cursor should stay on match (row 1, col 0)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -221,8 +228,9 @@ buffer_local_tests["buffer_local_inherit_global"] = function()
 	-- Should match integer (from global)
 	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "6")
-	-- Oracle: cursor should stay on modified element (at col 0)
+	-- Oracle: cursor should stay on modified element (row 1, col 0)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -234,8 +242,9 @@ buffer_local_tests["buffer_local_override"] = function()
 	-- Should match bool (not integer)
 	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "false")
-	-- Oracle: cursor should stay on modified element (at col 0)
+	-- Oracle: cursor should stay on modified element (row 1, col 0)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -285,8 +294,9 @@ opts_rules_tests["opts_rules_custom_inline"] = function()
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, seqadd = false, step = 1, rules = { custom_rule } })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "bar bar baz")
-	-- Oracle: cursor should stay on modified element (at col 0)
+	-- Oracle: cursor should stay on modified element (row 1, col 0)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -303,8 +313,9 @@ cache_tests["cache_clear_manual"] = function()
 	-- First execute (loads cache)
 	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "6")
-	-- Oracle: cursor should be on element (at col 0)
+	-- Oracle: cursor should be on element (row 1, col 0)
 	local cursor_mid = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_mid[1], 1)
 	expect.equality(cursor_mid[2], 0)
 	-- Manual cache clear
 	engine.clear_cache(buf)
@@ -312,8 +323,9 @@ cache_tests["cache_clear_manual"] = function()
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "7")
-	-- Oracle: cursor should be on element (at col 0)
+	-- Oracle: cursor should be on element (row 1, col 0)
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 0)
 end
 
@@ -398,6 +410,7 @@ boundary_tests["cursor_in_middle_of_multi_digit_number"] = function()
 	-- Oracle: cursor offset from match start was 1 (col 5 - match col 4)
 	-- New text "124" has length 3, so offset 1 should be valid, cursor at col=5
 	local cursor_after = vim.api.nvim_win_get_cursor(0)
+	expect.equality(cursor_after[1], 1)
 	expect.equality(cursor_after[2], 5)
 end
 

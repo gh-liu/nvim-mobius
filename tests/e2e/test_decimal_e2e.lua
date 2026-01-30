@@ -1,11 +1,19 @@
 -- End-to-end tests for decimal_fraction rule
 -- Tests the full workflow: find, increment/decrement, apply
+-- Uses opts.rules so only decimal_fraction is applied (no plugin/global rules needed).
 
 local MiniTest = require("mini.test")
 local expect = MiniTest.expect
 
 local engine = require("mobius.engine")
 local rules_decimal = require("mobius.rules.numeric.decimal_fraction")
+
+-- Pass only decimal_fraction rule so tests don't depend on vim.g.mobius_rules
+local function execute(direction, opts)
+	opts = opts or {}
+	opts.rules = opts.rules or { rules_decimal }
+	execute(direction, opts)
+end
 
 local function create_test_buf(lines)
 	local buf = vim.api.nvim_create_buf(false, true)
@@ -34,7 +42,7 @@ decimal_increment_tests["increment_simple_decimal"] = function()
 	local buf = create_test_buf({ "value = 1.5" })
 	vim.api.nvim_win_set_cursor(0, { 1, 8 })  -- On "1.5"
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "value = 2.5")
@@ -44,7 +52,7 @@ decimal_increment_tests["increment_decimal_preserves_places"] = function()
 	local buf = create_test_buf({ "x = 3.14" })
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })  -- On "3.14"
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "x = 4.14")
@@ -54,7 +62,7 @@ decimal_increment_tests["increment_decimal_many_places"] = function()
 	local buf = create_test_buf({ "price = 1.250" })
 	vim.api.nvim_win_set_cursor(0, { 1, 8 })
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "price = 2.250")
@@ -65,7 +73,7 @@ decimal_increment_tests["increment_negative_decimal"] = function()
 	-- Cursor on "5" (fractional part) to increment the decimal
 	vim.api.nvim_win_set_cursor(0, { 1, 12 })
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "offset = -1.6")
@@ -76,7 +84,7 @@ decimal_increment_tests["increment_cross_zero"] = function()
 	-- Cursor on "5" (fractional part)
 	vim.api.nvim_win_set_cursor(0, { 1, 9 })
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "val = -0.6")
@@ -93,7 +101,7 @@ decimal_decrement_tests["decrement_simple_decimal"] = function()
 	local buf = create_test_buf({ "value = 2.5" })
 	vim.api.nvim_win_set_cursor(0, { 1, 8 })
 	
-	engine.execute("decrement", { visual = false, step = 1 })
+	execute("decrement", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "value = 1.5")
@@ -104,7 +112,7 @@ decimal_decrement_tests["decrement_to_negative"] = function()
 	-- Cursor on "5" (fractional part)
 	vim.api.nvim_win_set_cursor(0, { 1, 6 })
 	
-	engine.execute("decrement", { visual = false, step = 1 })
+	execute("decrement", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "x = 0.4")
@@ -114,7 +122,7 @@ decimal_decrement_tests["decrement_preserves_places"] = function()
 	local buf = create_test_buf({ "y = 2.99" })
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })
 	
-	engine.execute("decrement", { visual = false, step = 1 })
+	execute("decrement", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "y = 1.99")
@@ -131,7 +139,7 @@ multiple_decimal_tests["increment_first_decimal"] = function()
 	local buf = create_test_buf({ "a = 1.5, b = 2.5" })
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "a = 2.5, b = 2.5")
@@ -141,7 +149,7 @@ multiple_decimal_tests["increment_second_decimal"] = function()
 	local buf = create_test_buf({ "a = 1.5, b = 2.5" })
 	vim.api.nvim_win_set_cursor(0, { 1, 13 })
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "a = 1.5, b = 3.5")
@@ -158,7 +166,7 @@ step_tests["increment_by_step_2"] = function()
 	local buf = create_test_buf({ "x = 1.5" })
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })
 	
-	engine.execute("increment", { visual = false, step = 2 })
+	execute("increment", { visual = false, step = 2 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "x = 3.5")
@@ -168,7 +176,7 @@ step_tests["decrement_by_step_3"] = function()
 	local buf = create_test_buf({ "x = 10.5" })
 	vim.api.nvim_win_set_cursor(0, { 1, 4 })
 	
-	engine.execute("decrement", { visual = false, step = 3 })
+	execute("decrement", { visual = false, step = 3 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "x = 7.5")
@@ -186,7 +194,7 @@ positive_sign_tests["positive_sign_preserved_on_increment"] = function()
 	-- Cursor on "5" (fractional part)
 	vim.api.nvim_win_set_cursor(0, { 1, 11 })
 	
-	engine.execute("increment", { visual = false, step = 1 })
+	execute("increment", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "delta = +1.6")
@@ -197,7 +205,7 @@ positive_sign_tests["positive_sign_preserved_small_decrement"] = function()
 	-- Cursor on "5" (fractional part)
 	vim.api.nvim_win_set_cursor(0, { 1, 7 })
 	
-	engine.execute("decrement", { visual = false, step = 1 })
+	execute("decrement", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "x = +5.4")
@@ -208,7 +216,7 @@ positive_sign_tests["positive_sign_removed_when_becoming_negative"] = function()
 	-- Cursor on "5" (fractional part)
 	vim.api.nvim_win_set_cursor(0, { 1, 7 })
 	
-	engine.execute("decrement", { visual = false, step = 1 })
+	execute("decrement", { visual = false, step = 1 })
 	
 	local text = get_line_text(buf, 0)
 	expect.equality(text, "y = +0.4")

@@ -104,9 +104,10 @@ increment_tests["integer_increment_with_feedkey"] = function()
 	child_set_cursor(child, 1, 4)
 	child_feedkey(child, "<C-a>")
 	expect.equality(child_get_lines(child), { "foo 124 bar" })
-	-- Cursor stays on line 1 after feedkey increment
+	-- Cursor stays on modified element (row 1, col 4)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 4)
 end
 
 increment_tests["integer_decrement_with_feedkey"] = function()
@@ -114,9 +115,10 @@ increment_tests["integer_decrement_with_feedkey"] = function()
 	child_set_cursor(child, 1, 4)
 	child_feedkey(child, "<C-x>")
 	expect.equality(child_get_lines(child), { "foo 122 bar" })
-	-- Cursor stays on line 1 after feedkey decrement
+	-- Cursor stays on modified element (row 1, col 4)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 4)
 end
 
 increment_tests["integer_increment_text_and_cursor"] = function()
@@ -124,9 +126,10 @@ increment_tests["integer_increment_text_and_cursor"] = function()
 	child_set_cursor(child, 1, 4)
 	child_feedkey(child, "<C-a>")
 	expect.equality(child_get_lines(child), { "foo 124 bar" })
-	-- Cursor should stay on same line after replacement
+	-- Cursor should stay on modified element (row 1, col 4)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 4)
 end
 
 increment_tests["integer_single_digit_to_double"] = function()
@@ -134,9 +137,10 @@ increment_tests["integer_single_digit_to_double"] = function()
 	child_set_cursor(child, 1, 0)
 	child_feedkey(child, "<C-a>")
 	expect.equality(child_get_lines(child), { "10" })
-	-- Cursor should be on same line
+	-- Cursor should stay on modified element (row 1, col 0)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 0)
 end
 
 increment_tests["boolean_toggle"] = function()
@@ -146,7 +150,8 @@ increment_tests["boolean_toggle"] = function()
 	expect.equality(child_get_lines(child), { "let x = false" })
 	-- Cursor should move to start of replacement (match.col), which is where "true" starts
 	local cursor = child_get_cursor(child)
-	expect.equality(cursor[1], 1) -- same line
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 9)
 end
 
 increment_tests["no_match_no_change"] = function()
@@ -162,9 +167,10 @@ increment_tests["multiple_matches_on_line_cursor_on_second"] = function()
 	child_set_cursor(child, 1, 2) -- on "2"
 	child_feedkey(child, "<C-a>")
 	expect.equality(child_get_lines(child), { "1 3 3" })
-	-- Cursor should stay on line 1 after increment
+	-- Cursor should stay on modified element (row 1, col 2)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 2)
 end
 
 T["increment"] = increment_tests
@@ -179,9 +185,10 @@ numeric_tests["integer_decrement"] = function()
 	child_set_cursor(child, 1, 6)
 	child_engine_execute(child, "decrement", 1)
 	expect.equality(child_get_lines(child), { "count 41 items" })
-	-- Cursor should be on the match (line 1)
+	-- Cursor should be on the match (row 1, col 6)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 6)
 end
 
 numeric_tests["hex_increment"] = function()
@@ -189,9 +196,10 @@ numeric_tests["hex_increment"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "color: 0x100" })
-	-- Cursor stays on line 1; column may shift due to length change (3→4 chars)
+	-- Cursor stays on modified element (row 1, col 8: first digit of new hex)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 numeric_tests["hex_decrement_wrap"] = function()
@@ -199,9 +207,10 @@ numeric_tests["hex_decrement_wrap"] = function()
 	child_set_cursor(child, 1, 1)
 	child_engine_execute(child, "decrement", 1)
 	expect.equality(child_get_lines(child), { "0xf" })
-	-- Cursor stays on line 1
+	-- Cursor stays on modified element (row 1, col 1)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 1)
 end
 
 numeric_tests["octal_increment"] = function()
@@ -209,9 +218,10 @@ numeric_tests["octal_increment"] = function()
 	child_set_cursor(child, 1, 6)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "chmod 0o756 file" })
-	-- Cursor stays on line 1
+	-- Cursor stays on modified element (row 1, col 6)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 6)
 end
 
 numeric_tests["octal_uppercase"] = function()
@@ -219,9 +229,10 @@ numeric_tests["octal_uppercase"] = function()
 	child_set_cursor(child, 1, 5)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "mode 0O645" })
-	-- Cursor stays on line 1
+	-- Cursor stays on modified element (row 1, col 5)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 5)
 end
 
 numeric_tests["decimal_increment"] = function()
@@ -229,9 +240,10 @@ numeric_tests["decimal_increment"] = function()
 	child_set_cursor(child, 1, 7)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "price: 2.5 usd" })
-	-- Cursor stays on line 1
+	-- Cursor stays on modified element (row 1, col 7)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 7)
 end
 
 numeric_tests["decimal_decrement"] = function()
@@ -239,9 +251,10 @@ numeric_tests["decimal_decrement"] = function()
 	child_set_cursor(child, 1, 10)
 	child_engine_execute(child, "decrement", 1)
 	expect.equality(child_get_lines(child), { "balance: 9.5" })
-	-- Cursor stays on line 1
+	-- Cursor stays on modified element (row 1, col 9: start of "9.5")
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 9)
 end
 
 T["numeric"] = numeric_tests
@@ -256,9 +269,10 @@ constant_tests["bool_toggle"] = function()
 	child_set_cursor(child, 1, 15)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "let enabled = false" })
-	-- Cursor should move to start of replacement (true → false changes length)
+	-- Cursor should move to start of replacement (row 1, col 15)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 15)
 end
 
 constant_tests["yes_no_toggle"] = function()
@@ -266,9 +280,10 @@ constant_tests["yes_no_toggle"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "answer: no" })
-	-- Cursor on line 1 after toggle
+	-- Cursor on modified element (row 1, col 8)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 constant_tests["on_off_toggle"] = function()
@@ -276,9 +291,10 @@ constant_tests["on_off_toggle"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "status: off" })
-	-- Cursor on line 1 after toggle
+	-- Cursor on modified element (row 1, col 8)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 constant_tests["and_or_toggle"] = function()
@@ -286,9 +302,10 @@ constant_tests["and_or_toggle"] = function()
 	child_set_cursor(child, 1, 5)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "if a || b" })
-	-- Cursor on line 1; && → || maintains length
+	-- Cursor on modified element (row 1, col 5)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 5)
 end
 
 constant_tests["http_method_cycle"] = function()
@@ -296,9 +313,10 @@ constant_tests["http_method_cycle"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "method: POST" })
-	-- Cursor on line 1 after cycle
+	-- Cursor on modified element (row 1, col 8)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 T["constant"] = constant_tests
@@ -315,6 +333,7 @@ date_tests["iso_month_increment"] = function()
 	expect.equality(child_get_lines(child), { "2023-01-06" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 6)
 end
 
 date_tests["iso_day_increment"] = function()
@@ -324,6 +343,7 @@ date_tests["iso_day_increment"] = function()
 	expect.equality(child_get_lines(child), { "2022-12-07" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 9)
 end
 
 date_tests["ymd_day_increment"] = function()
@@ -333,6 +353,7 @@ date_tests["ymd_day_increment"] = function()
 	expect.equality(child_get_lines(child), { "2024/01/16" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 date_tests["dmy_month_increment"] = function()
@@ -342,6 +363,7 @@ date_tests["dmy_month_increment"] = function()
 	expect.equality(child_get_lines(child), { "15/02/2024" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 3)
 end
 
 date_tests["mdy_day_increment"] = function()
@@ -351,6 +373,7 @@ date_tests["mdy_day_increment"] = function()
 	expect.equality(child_get_lines(child), { "01/16/2024" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 3)
 end
 
 date_tests["md_day_increment"] = function()
@@ -360,6 +383,7 @@ date_tests["md_day_increment"] = function()
 	expect.equality(child_get_lines(child), { "01/16" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 3)
 end
 
 date_tests["ymd_day_boundary"] = function()
@@ -369,6 +393,7 @@ date_tests["ymd_day_boundary"] = function()
 	expect.equality(child_get_lines(child), { "2024/02/01" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 date_tests["month_decrement_boundary"] = function()
@@ -378,6 +403,7 @@ date_tests["month_decrement_boundary"] = function()
 	expect.equality(child_get_lines(child), { "2023/12/15" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 5)
 end
 
 date_tests["time_hm_increment"] = function()
@@ -387,6 +413,7 @@ date_tests["time_hm_increment"] = function()
 	expect.equality(child_get_lines(child), { "15:30" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 0)
 end
 
 date_tests["time_hm_decrement"] = function()
@@ -396,6 +423,7 @@ date_tests["time_hm_decrement"] = function()
 	expect.equality(child_get_lines(child), { "00:30" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 0)
 end
 
 date_tests["time_hms_increment"] = function()
@@ -405,6 +433,7 @@ date_tests["time_hms_increment"] = function()
 	expect.equality(child_get_lines(child), { "15:30:45" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 0)
 end
 
 date_tests["time_hms_minute_increment"] = function()
@@ -414,6 +443,7 @@ date_tests["time_hms_minute_increment"] = function()
 	expect.equality(child_get_lines(child), { "14:31:45" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 3)
 end
 
 T["date"] = date_tests
@@ -430,6 +460,7 @@ complex_type_tests["semver_patch_increment"] = function()
 	expect.equality(child_get_lines(child), { "version 1.2.4" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 12)
 end
 
 complex_type_tests["semver_minor_increment"] = function()
@@ -439,6 +470,7 @@ complex_type_tests["semver_minor_increment"] = function()
 	expect.equality(child_get_lines(child), { "version 1.3.0" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 10)
 end
 
 complex_type_tests["hexcolor_increment"] = function()
@@ -448,6 +480,7 @@ complex_type_tests["hexcolor_increment"] = function()
 	expect.equality(child_get_lines(child), { "color: #110000" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 complex_type_tests["markdown_level_increase"] = function()
@@ -457,6 +490,7 @@ complex_type_tests["markdown_level_increase"] = function()
 	expect.equality(child_get_lines(child), { "### Header" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 1)
 end
 
 complex_type_tests["markdown_level_decrease"] = function()
@@ -466,6 +500,7 @@ complex_type_tests["markdown_level_decrease"] = function()
 	expect.equality(child_get_lines(child), { "## Header" })
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 1)
 end
 
 complex_type_tests["paren_cycle"] = function()
@@ -473,9 +508,10 @@ complex_type_tests["paren_cycle"] = function()
 	child_set_cursor(child, 1, 4)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "func[x]" })
-	-- Cursor stays on line 1 (paren doesn't change line)
+	-- Cursor stays on modified element (row 1, col 4)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 4)
 end
 
 complex_type_tests["case_conversion"] = function()
@@ -483,9 +519,10 @@ complex_type_tests["case_conversion"] = function()
 	child_set_cursor(child, 1, 0)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "my_variable" })
-	-- Cursor stays on line 1 (camelCase → snake_case)
+	-- Cursor stays on modified element (row 1, col 0)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 0)
 end
 
 T["complex_type"] = complex_type_tests
@@ -500,9 +537,10 @@ priority_scenario_tests["rule_priority_determines_match"] = function()
 	child_set_cursor(child, 1, 1)
 	child_feedkey(child, "<C-a>") -- Should match hex (priority > integer)
 	expect.equality(child_get_lines(child), { "0x100 123" })
-	-- Cursor should stay on line 1
+	-- Cursor should stay on modified element (row 1, col 1)
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 1)
 end
 
 T["priority_scenario"] = priority_scenario_tests
