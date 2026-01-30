@@ -185,7 +185,10 @@ local function find_match(cursor, opts)
 		local match = rule.find(cursor)
 		if match then
 			local score = match_scorer.score_for_rule_match(match, col, rule.priority)
-			if score > best_score then
+			local priority = rule.priority or constants.DEFAULT_PRIORITY
+			local best_priority = best_match and (best_match.rule.priority or constants.DEFAULT_PRIORITY) or -1
+			-- Prefer higher-priority rule; when equal, prefer higher score
+			if priority > best_priority or (priority == best_priority and score > best_score) then
 				best_score = score
 				best_match = {
 					rule = rule,
