@@ -13,69 +13,57 @@ A powerful and extensible Neovim plugin that intelligently increments/decrements
 
 ### Supported Scenarios
 
-All entries below are built-in rules; enable them via `vim.g.mobius_rules` or `vim.b.mobius_rules`. ✓ means included in the [Basic Setup](#basic-setup) example.
+Built-in rules; enable via `vim.g.mobius_rules` or `vim.b.mobius_rules`.
 
-| Scenario | Example | Default |
-|----------|---------|:----:|
-| Integer | `1` ↔ `2` ↔ `3`, supports `10<C-a>` | ✓ |
-| Decimal | `1.5` ↔ `2.5`, preserves decimal places | |
-| Hex | `0xFF` ↔ `0x100` | ✓ |
-| Octal | `0o755` ↔ `0o756` | |
-| Boolean | `true` ↔ `false` (also `True`/`False`, `TRUE`/`FALSE`) | ✓ |
-| Toggle | `on` ↔ `off`, `yes` ↔ `no` | ✓ |
-| Operators | `&&` ↔ `\|\|`, `and` ↔ `or` | |
-| HTTP methods | `GET` ↔ `POST` ↔ `PUT` ↔ `DELETE` | |
-| Brackets | `()` ↔ `[]` ↔ `{}` (handles nesting) | |
-| Markdown headings | `#` ↔ `##` ↔ `###` | |
-| Date | `2024/01/15` ↔ `2024/02/15` (multiple formats) | |
-| Semver | `1.0.0` ↔ `1.0.1`, major/minor/patch at cursor | |
-| Hex color | `#fff` ↔ `#100`, `#RRGGBB` per-component | |
-| Case style | `snake_case` ↔ `camelCase` ↔ `kebab-case` ↔ … | |
-| LSP enum | Get config/options via LSP (when LSP attached) | |
+| Scenario | Example |
+|----------|---------|
+| Integer | `1` ↔ `2` ↔ `3`, supports `10<C-a>` |
+| Decimal | `1.5` ↔ `2.5`, preserves decimal places |
+| Hex | `0xFF` ↔ `0x100` |
+| Octal | `0o755` ↔ `0o756` |
+| Boolean | `true` ↔ `false` (also `True`/`False`, `TRUE`/`FALSE`) |
+| Toggle | `on` ↔ `off`, `yes` ↔ `no` |
+| Operators | `&&` ↔ `\|\|`, `and` ↔ `or` |
+| HTTP methods | `GET` ↔ `POST` ↔ `PUT` ↔ `DELETE` |
+| Brackets | `()` ↔ `[]` ↔ `{}` (handles nesting) |
+| Markdown headings | `#` ↔ `##` ↔ `###` |
+| Date | `2024/01/15` ↔ `2024/02/15` (multiple formats) |
+| Semver | `1.0.0` ↔ `1.0.1`, major/minor/patch at cursor |
+| Hex color | `#fff` ↔ `#100`, `#RRGGBB` per-component |
+| Case style | `snake_case` ↔ `camelCase` ↔ `kebab-case` ↔ … |
+| LSP enum | Get config/options via LSP (when LSP attached) |
 
 ---
 
 ## Installation
 
-[lazy.nvim](https://github.com/folke/lazy.nvim): add to your spec. Use `keys` so the plugin loads on first use; optional `dev = true` for a local clone.
+[lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
   "gh-liu/nvim-mobius",
-  dev = true, -- optional
   keys = {
     { "<C-a>", "<Plug>(MobiusIncrement)", mode = { "n", "v" }, desc = "Increment" },
     { "<C-x>", "<Plug>(MobiusDecrement)", mode = { "n", "v" }, desc = "Decrement" },
-    { "g<C-a>", "<Plug>(MobiusIncrementSeq)", mode = { "n", "v" }, remap = true, desc = "Increment seq / cumulative" },
-    { "g<C-x>", "<Plug>(MobiusDecrementSeq)", mode = { "n", "v" }, remap = true, desc = "Decrement seq / cumulative" },
+    { "g<C-a>", "<Plug>(MobiusIncrementSeq)", mode = { "n", "v" }, remap = true, desc = "Increment seq" },
+    { "g<C-x>", "<Plug>(MobiusDecrementSeq)", mode = { "n", "v" }, remap = true, desc = "Decrement seq" },
   },
-  init = function()
-    local ft_rules = {
-      go = {
-        true,
-        function()
-          return require("mobius.rules.lsp_enum")({
-            symbol_kinds = { vim.lsp.protocol.CompletionItemKind.Constant },
-            exclude_labels = { "false", "true" },
-          })
-        end,
-      },
-    }
-    vim.api.nvim_create_autocmd("FileType", {
-      pattern = vim.tbl_keys(ft_rules),
-      callback = function(args)
-        vim.b[args.buf].mobius_rules = ft_rules[args.match]
-      end,
-    })
-  end,
 }
 ```
 
-The plugin sets default `g:mobius_rules` when loaded. Override in `config = function() ... end` if you want different global rules. More patterns: [Configuration](#configuration).
+Defaults: plugin sets `g:mobius_rules` on load. Use `init` for filetype rules; see [Configuration](#configuration).
 
 ---
 
 ## Configuration
+
+`g:mobius_rules` and `b:mobius_rules` are lists. Each entry may be:
+
+- **String** — module path, lazy-loaded via `require(...)` (e.g. `"mobius.rules.numeric.integer"`).
+- **Table** — a rule object `{ find, add, ... }` directly.
+- **Function** — called when resolving rules; must return a rule table (or a list of rules).
+
+Buffer rules only: the first element may be `true` to inherit `g:mobius_rules`, then append buffer-local entries.
 
 ### Basic Setup
 
@@ -156,25 +144,27 @@ require("mobius.rules.lsp_enum")({
 
 ### Available Pre-built Rules
 
-| Module | Description |
-|--------|-------------|
-| `mobius.rules.numeric.integer` | Integers |
-| `mobius.rules.numeric.hex` | Hexadecimal (`0x...`) |
-| `mobius.rules.numeric.octal` | Octal (`0o...`) |
-| `mobius.rules.numeric.decimal_fraction` | Decimal numbers (`1.5`) |
-| `mobius.rules.constant.bool` | `true`/`false` |
-| `mobius.rules.constant.yes_no` | `yes`/`no` |
-| `mobius.rules.constant.on_off` | `on`/`off` |
-| `mobius.rules.constant.and_or` | `&&`/`\|\|`, `and`/`or` |
-| `mobius.rules.constant.http_method` | `GET`/`POST`/`PUT`/`DELETE` |
-| `mobius.rules.constant` | Generic constant cycler (custom elements) |
-| `mobius.rules.paren` | Brackets `()` ↔ `[]` ↔ `{}` |
-| `mobius.rules.markdown_header` | `#` ↔ `##` ↔ `###` |
-| `mobius.rules.date` | Date (multiple formats) |
-| `mobius.rules.semver` | Semantic version `major.minor.patch` |
-| `mobius.rules.hexcolor` | Hex colors `#RRGGBB` / `#RGB` |
-| `mobius.rules.case` | Case style (snake_case, camelCase, etc.) |
-| `mobius.rules.lsp_enum` | LSP-based enum (when LSP attached) |
+Default = loaded when `g:mobius_rules` is unset (plugin sets it on load).
+
+| Module | Description | Default |
+|--------|-------------|:------:|
+| `mobius.rules.numeric.integer` | Integers | ✓ |
+| `mobius.rules.numeric.hex` | Hexadecimal (`0x...`) | ✓ |
+| `mobius.rules.numeric.octal` | Octal (`0o...`) | ✓ |
+| `mobius.rules.numeric.decimal_fraction` | Decimal numbers (`1.5`) | ✓ |
+| `mobius.rules.constant.bool` | `true`/`false` | ✓ |
+| `mobius.rules.constant.yes_no` | `yes`/`no` | ✓ |
+| `mobius.rules.constant.on_off` | `on`/`off` | ✓ |
+| `mobius.rules.constant.and_or` | `&&`/`\|\|`, `and`/`or` | |
+| `mobius.rules.constant.http_method` | `GET`/`POST`/`PUT`/`DELETE` | |
+| `mobius.rules.constant` | Generic constant cycler (custom elements) | |
+| `mobius.rules.paren` | Brackets `()` ↔ `[]` ↔ `{}` | ✓ |
+| `mobius.rules.markdown_header` | `#` ↔ `##` ↔ `###` | |
+| `mobius.rules.date` | Date (iso, ymd, mdy, dmy, time_hm, time_hms) | ✓ |
+| `mobius.rules.semver` | Semantic version `major.minor.patch` | |
+| `mobius.rules.hexcolor` | Hex colors `#RRGGBB` / `#RGB` | |
+| `mobius.rules.case` | Case style (snake_case, camelCase, etc.) | |
+| `mobius.rules.lsp_enum` | LSP-based enum (when LSP attached) | |
 
 ---
 
