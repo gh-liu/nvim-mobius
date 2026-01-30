@@ -98,8 +98,10 @@ priority_interaction_tests["hex_priority_0x10_not_integer"] = function()
 	child_feedkey(child, "<C-a>")
 	-- Should become 0x11 (hex increment), not 1 (integer)
 	expect.equality(child_get_lines(child), { "value: 0x11" })
+	-- Oracle: cursor should stay on modified element
 	local cursor = child_get_cursor(child)
 	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 priority_interaction_tests["octal_priority_0o_not_integer"] = function()
@@ -108,6 +110,10 @@ priority_interaction_tests["octal_priority_0o_not_integer"] = function()
 	child_set_cursor(child, 1, 6)
 	child_feedkey(child, "<C-a>")
 	expect.equality(child_get_lines(child), { "chmod 0o756 file" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 6)
 end
 
 priority_interaction_tests["decimal_priority_1_5_not_split"] = function()
@@ -116,6 +122,10 @@ priority_interaction_tests["decimal_priority_1_5_not_split"] = function()
 	child_set_cursor(child, 1, 7)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "price: 2.5" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 7)
 end
 
 T["priority_interaction"] = priority_interaction_tests
@@ -131,6 +141,10 @@ date_edge_case_tests["leap_year_feb_29_increment"] = function()
 	child_set_cursor(child, 1, 13) -- On day
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "date: 2024/03/01" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 13)
 end
 
 date_edge_case_tests["non_leap_year_feb_boundary"] = function()
@@ -139,6 +153,10 @@ date_edge_case_tests["non_leap_year_feb_boundary"] = function()
 	child_set_cursor(child, 1, 8) -- On day
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "2023/03/01" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 date_edge_case_tests["year_end_rollover_ymd"] = function()
@@ -147,6 +165,10 @@ date_edge_case_tests["year_end_rollover_ymd"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "2025/01/01" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 date_edge_case_tests["year_start_rollback_ymd"] = function()
@@ -155,6 +177,10 @@ date_edge_case_tests["year_start_rollback_ymd"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "decrement", 1)
 	expect.equality(child_get_lines(child), { "2023/12/31" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 date_edge_case_tests["iso_date_leap_year"] = function()
@@ -163,6 +189,10 @@ date_edge_case_tests["iso_date_leap_year"] = function()
 	child_set_cursor(child, 1, 8)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "2024-03-01" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 date_edge_case_tests["month_boundary_30_to_31"] = function()
@@ -171,6 +201,10 @@ date_edge_case_tests["month_boundary_30_to_31"] = function()
 	child_set_cursor(child, 1, 5) -- On month
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "2024/05/30" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 5)
 end
 
 date_edge_case_tests["time_minute_wrap"] = function()
@@ -196,6 +230,10 @@ color_edge_case_tests["hexcolor_increment_component"] = function()
 	child_set_cursor(child, 1, 8) -- On first digit (red)
 	child_engine_execute(child, "increment", 1)
 	expect.equality(child_get_lines(child), { "color: #FF0000" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 8)
 end
 
 color_edge_case_tests["hexcolor_min_clamp_zero"] = function()
@@ -204,6 +242,10 @@ color_edge_case_tests["hexcolor_min_clamp_zero"] = function()
 	child_set_cursor(child, 1, 2) -- On first hex digit
 	child_engine_execute(child, "decrement", 1)
 	expect.equality(child_get_lines(child), { "#000000" })
+	-- Oracle: cursor should stay on modified element
+	local cursor = child_get_cursor(child)
+	expect.equality(cursor[1], 1)
+	expect.equality(cursor[2], 2)
 end
 
 T["color_edge_case"] = color_edge_case_tests

@@ -264,11 +264,23 @@ local function apply_transform(cursor, addend, opts)
 	-- Update the buffer
 	apply_text_to_buffer(row, match, new_text)
 
-	-- Cursor: default start of replacement; or apply rule-provided offset from match.col
+	-- Oracle: Cursor should stay on the modified element
+	-- Calculation:
+	--   1. Find where cursor was relative to match start (offset_in_match)
+	--   2. Apply rule-provided cursor_offset if present
+	--   3. Otherwise, keep relative position but clamp to new text length
+	local offset_in_match = col - match.col
 	local new_col = match.col
+
 	if type(cursor_offset) == "number" then
+		-- Rule explicitly specifies where cursor should be (relative to match.col)
 		new_col = math.max(0, match.col + cursor_offset)
+	else
+		-- Default: keep same relative offset within the new text
+		-- Clamp to [0, len-1] to stay within bounds
+		new_col = match.col + math.min(offset_in_match, math.max(0, #new_text - 1))
 	end
+
 	vim.api.nvim_win_set_cursor(0, { row + 1, new_col })
 
 	return true, new_text, rule
