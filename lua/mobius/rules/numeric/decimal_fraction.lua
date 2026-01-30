@@ -139,8 +139,8 @@ function M.add(addend, metadata)
 		local sign_len = #new_sign
 		return { text = new_text, cursor = sign_len + int_len - 1 }
 	else
-		-- Cursor after decimal: modify fractional part
-		-- Extract integer and fractional parts
+		-- Cursor after decimal: modify the digit at cursor position (not always last place)
+		-- e.g. "1.46" with cursor on "4" (tenths): add 0.1 -> 1.56; on "6" (hundredths): add 0.01 -> 1.47
 		local num_part = original_text:gsub("^[+-]", "")  -- Remove sign
 		local integer_part, frac_part = num_part:match("^(%d+)%.(%d+)$")
 		
@@ -150,10 +150,14 @@ function M.add(addend, metadata)
 
 		local frac_val = tonumber(frac_part)
 		local decimal_places = #frac_part
-		
-		-- Modify fractional part: increment/decrement at the last decimal place
-		-- e.g., "7.5" with cursor on "5": 7.5 + 0.1 = 7.6
-		local frac_addend = addend * (10 ^ (-decimal_places))
+		-- Which decimal place is the cursor in? (1 = first digit after dot, e.g. tenths)
+		local cursor_place = pos_in_number - dot_pos
+		if cursor_place < 1 then
+			cursor_place = 1
+		elseif cursor_place > decimal_places then
+			cursor_place = decimal_places
+		end
+		local frac_addend = addend * (10 ^ (-cursor_place))
 		
 		local int_val = tonumber(integer_part)
 		local full_val = int_val + frac_val / (10 ^ decimal_places)
@@ -169,8 +173,11 @@ function M.add(addend, metadata)
 		-- Format result preserving decimal places
 		local new_text = string.format("%s%." .. decimal_places .. "f", sign, new_full_val)
 		
-		-- Cursor stays on fractional part (at the end)
-		return { text = new_text, cursor = #new_text - 1 }
+		-- Cursor stays on the digit we modified (same decimal place)
+		local sign_len = #sign
+		local int_part_new = tostring(math.floor(math.abs(new_full_val)))
+		local cursor_on_digit = sign_len + #int_part_new + 1 + (cursor_place - 1) - 1  -- 0-indexed
+		return { text = new_text, cursor = cursor_on_digit }
 	end
 end
 
