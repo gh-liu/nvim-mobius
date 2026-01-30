@@ -7,7 +7,7 @@ local M = {}
 ---@return mobius.Rule
 function M.new(opts)
 	opts = opts or {}
-	local priority = opts.priority or 70  -- markdown_header: highest (pure structure, no conflict)
+	local priority = opts.priority or 70 -- markdown_header: highest (pure structure, no conflict)
 	local id = opts.id or "markdown_header"
 
 	return {

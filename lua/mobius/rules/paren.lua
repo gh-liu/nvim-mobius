@@ -1,7 +1,7 @@
 -- Bracket/parenthesis swapping: () <-> [] <-> {}
 local M = {
 	id = "paren",
-	priority = 58,  -- Higher than numeric; clearly distinguishable
+	priority = 58, -- Higher than numeric; clearly distinguishable
 	cyclic = true,
 }
 

@@ -99,7 +99,7 @@ function M.new(opts)
 	local types = opts.types or { "camelCase", "snake_case", "PascalCase" }
 	local cyclic = opts.cyclic ~= nil and opts.cyclic or true
 	local word = opts.word ~= nil and opts.word or true
-	local priority = opts.priority or 65  -- case: high priority for identifier conversion
+	local priority = opts.priority or 65 -- case: high priority for identifier conversion
 	local id = opts.id or "case"
 
 	local match_scorer = require("mobius.engine.match_scorer")

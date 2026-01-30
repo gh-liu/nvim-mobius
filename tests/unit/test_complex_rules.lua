@@ -207,7 +207,7 @@ semver_tests["find_cursor_on_patch"] = function()
 end
 
 semver_tests["find_basic"] = function()
-	local buf = create_test_buf({ "\"version\": \"1.2.3\"" })
+	local buf = create_test_buf({ '"version": "1.2.3"' })
 	local r = require("mobius.rules.semver")()
 	local match = r.find({ row = 0, col = 12 })
 	expect.equality(match ~= nil, true)
@@ -417,13 +417,15 @@ end
 
 case_tests["case_camel_to_snake_direct"] = function()
 	local r = require("mobius.rules.case")({ types = { "camelCase", "snake_case", "PascalCase" } })
-	local meta = { text = "myVariableName", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase" } }
+	local meta =
+		{ text = "myVariableName", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase" } }
 	expect.equality(r.add(1, meta), "my_variable_name")
 end
 
 case_tests["case_snake_to_pascal_direct"] = function()
 	local r = require("mobius.rules.case")({ types = { "camelCase", "snake_case", "PascalCase" } })
-	local meta = { text = "my_variable_name", case_type = "snake_case", types = { "camelCase", "snake_case", "PascalCase" } }
+	local meta =
+		{ text = "my_variable_name", case_type = "snake_case", types = { "camelCase", "snake_case", "PascalCase" } }
 	expect.equality(r.add(1, meta), "MyVariableName")
 end
 
@@ -435,38 +437,69 @@ end
 
 case_tests["case_kebab_to_screaming"] = function()
 	local r = require("mobius.rules.case")({ types = { "kebab-case", "SCREAMING_SNAKE_CASE", "camelCase" } })
-	local meta = { text = "my-variable", case_type = "kebab-case", types = { "kebab-case", "SCREAMING_SNAKE_CASE", "camelCase" } }
+	local meta = {
+		text = "my-variable",
+		case_type = "kebab-case",
+		types = { "kebab-case", "SCREAMING_SNAKE_CASE", "camelCase" },
+	}
 	expect.equality(r.add(1, meta), "MY_VARIABLE")
 end
 
 case_tests["case_screaming_to_camel"] = function()
 	local r = require("mobius.rules.case")({ types = { "SCREAMING_SNAKE_CASE", "camelCase", "snake_case" } })
-	local meta = { text = "MY_VARIABLE", case_type = "SCREAMING_SNAKE_CASE", types = { "SCREAMING_SNAKE_CASE", "camelCase", "snake_case" } }
+	local meta = {
+		text = "MY_VARIABLE",
+		case_type = "SCREAMING_SNAKE_CASE",
+		types = { "SCREAMING_SNAKE_CASE", "camelCase", "snake_case" },
+	}
 	expect.equality(r.add(1, meta), "myVariable")
 end
 
 case_tests["case_full_cycle"] = function()
-	local r = require("mobius.rules.case")({ types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" } })
+	local r = require("mobius.rules.case")({
+		types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" },
+	})
 	-- Test full cycle: camelCase -> snake_case -> PascalCase -> kebab-case -> SCREAMING_SNAKE_CASE -> camelCase
-	local meta1 = { text = "myVar", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" } }
+	local meta1 = {
+		text = "myVar",
+		case_type = "camelCase",
+		types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" },
+	}
 	expect.equality(r.add(1, meta1), "my_var")
 
-	local meta2 = { text = "my_var", case_type = "snake_case", types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" } }
+	local meta2 = {
+		text = "my_var",
+		case_type = "snake_case",
+		types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" },
+	}
 	expect.equality(r.add(1, meta2), "MyVar")
 
-	local meta3 = { text = "MyVar", case_type = "PascalCase", types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" } }
+	local meta3 = {
+		text = "MyVar",
+		case_type = "PascalCase",
+		types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" },
+	}
 	expect.equality(r.add(1, meta3), "my-var")
 
-	local meta4 = { text = "my-var", case_type = "kebab-case", types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" } }
+	local meta4 = {
+		text = "my-var",
+		case_type = "kebab-case",
+		types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" },
+	}
 	expect.equality(r.add(1, meta4), "MY_VAR")
 
-	local meta5 = { text = "MY_VAR", case_type = "SCREAMING_SNAKE_CASE", types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" } }
+	local meta5 = {
+		text = "MY_VAR",
+		case_type = "SCREAMING_SNAKE_CASE",
+		types = { "camelCase", "snake_case", "PascalCase", "kebab-case", "SCREAMING_SNAKE_CASE" },
+	}
 	expect.equality(r.add(1, meta5), "myVar")
 end
 
 case_tests["case_multiple_words"] = function()
 	local r = require("mobius.rules.case")({ types = { "camelCase", "snake_case", "PascalCase" } })
-	local meta = { text = "httpResponseCode", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase" } }
+	local meta =
+		{ text = "httpResponseCode", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase" } }
 	expect.equality(r.add(1, meta), "http_response_code")
 end
 

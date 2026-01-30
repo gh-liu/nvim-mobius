@@ -9,7 +9,7 @@ local M = {}
 function M.new(opts)
 	opts = opts or {}
 	local case = opts.case or "prefer_lower" -- upper, lower, prefer_upper, prefer_lower
-	local priority = opts.priority or 60  -- hexcolor: specific format #RRGGBB
+	local priority = opts.priority or 60 -- hexcolor: specific format #RRGGBB
 	local id = opts.id or "hexcolor"
 
 	return {

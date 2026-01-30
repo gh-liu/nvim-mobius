@@ -305,7 +305,7 @@ time_tests["time_hour_wrap_23_to_00"] = function()
 		text = "23:30",
 		pattern = "%H:%M",
 		component = "hour",
-		captures = { "23", "30" }
+		captures = { "23", "30" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -318,7 +318,7 @@ time_tests["time_hour_underflow_00_to_23"] = function()
 		text = "00:30",
 		pattern = "%H:%M",
 		component = "hour",
-		captures = { "00", "30" }
+		captures = { "00", "30" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -331,7 +331,7 @@ time_tests["time_minute_overflow_59_to_00"] = function()
 		text = "14:59",
 		pattern = "%H:%M",
 		component = "minute",
-		captures = { "14", "59" }
+		captures = { "14", "59" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -345,7 +345,7 @@ time_tests["time_minute_underflow_00_to_59"] = function()
 		text = "14:00",
 		pattern = "%H:%M",
 		component = "minute",
-		captures = { "14", "00" }
+		captures = { "14", "00" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -359,7 +359,7 @@ time_tests["time_second_overflow_59_to_00"] = function()
 		text = "14:30:59",
 		pattern = "%H:%M:%S",
 		component = "second",
-		captures = { "14", "30", "59" }
+		captures = { "14", "30", "59" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -373,7 +373,7 @@ time_tests["time_second_underflow_00_to_59"] = function()
 		text = "14:31:00",
 		pattern = "%H:%M:%S",
 		component = "second",
-		captures = { "14", "31", "00" }
+		captures = { "14", "31", "00" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -387,7 +387,7 @@ time_tests["time_wrap_all_components"] = function()
 		text = "23:59:59",
 		pattern = "%H:%M:%S",
 		component = "second",
-		captures = { "23", "59", "59" }
+		captures = { "23", "59", "59" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -401,7 +401,7 @@ time_tests["time_hm_basic_increment"] = function()
 		text = "14:30",
 		pattern = "%H:%M",
 		component = "hour",
-		captures = { "14", "30" }
+		captures = { "14", "30" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -414,7 +414,7 @@ time_tests["time_hm_basic_decrement"] = function()
 		text = "14:30",
 		pattern = "%H:%M",
 		component = "hour",
-		captures = { "14", "30" }
+		captures = { "14", "30" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -427,7 +427,7 @@ time_tests["time_iso_format"] = function()
 		text = "14:30:45",
 		pattern = "%H:%M:%S",
 		component = "minute",
-		captures = { "14", "30", "45" }
+		captures = { "14", "30", "45" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -441,7 +441,7 @@ time_tests["time_minute_overflow_carry_to_hour"] = function()
 		text = "08:59:30",
 		pattern = "%H:%M:%S",
 		component = "minute",
-		captures = { "08", "59", "30" }
+		captures = { "08", "59", "30" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -455,7 +455,7 @@ time_tests["time_second_overflow_carry_to_minute"] = function()
 		text = "14:30:59",
 		pattern = "%H:%M:%S",
 		component = "second",
-		captures = { "14", "30", "59" }
+		captures = { "14", "30", "59" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -469,7 +469,7 @@ time_tests["time_hour_overflow_carry_past_midnight"] = function()
 		text = "23:45",
 		pattern = "%H:%M",
 		component = "hour",
-		captures = { "23", "45" }
+		captures = { "23", "45" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -489,7 +489,7 @@ leap_year_tests["leap_year_divisible_by_4"] = function()
 		text = "2024/02/28",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "02", "28" }
+		captures = { "2024", "02", "28" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -503,7 +503,7 @@ leap_year_tests["leap_year_divisible_by_100_not_400"] = function()
 		text = "1900/02/28",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "1900", "02", "28" }
+		captures = { "1900", "02", "28" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -517,7 +517,7 @@ leap_year_tests["leap_year_divisible_by_400"] = function()
 		text = "2000/02/28",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2000", "02", "28" }
+		captures = { "2000", "02", "28" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -531,7 +531,7 @@ leap_year_tests["feb_29_leap_to_mar_1"] = function()
 		text = "2024/02/29",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "02", "29" }
+		captures = { "2024", "02", "29" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -544,7 +544,7 @@ leap_year_tests["feb_28_non_leap_to_mar_1"] = function()
 		text = "2023/02/28",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2023", "02", "28" }
+		captures = { "2023", "02", "28" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -558,7 +558,7 @@ leap_year_tests["mar_1_back_to_feb_29"] = function()
 		text = "2024/03/01",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "03", "01" }
+		captures = { "2024", "03", "01" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -579,7 +579,7 @@ boundary_tests["jan_1_minus_1_day"] = function()
 		text = "2024/01/01",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "01", "01" }
+		captures = { "2024", "01", "01" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -592,7 +592,7 @@ boundary_tests["dec_31_plus_1_day"] = function()
 		text = "2024/12/31",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "12", "31" }
+		captures = { "2024", "12", "31" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -605,7 +605,7 @@ boundary_tests["month_30_day_overflow"] = function()
 		text = "2024/04/30",
 		pattern = "%Y/%m/%d",
 		component = "month",
-		captures = { "2024", "04", "30" }
+		captures = { "2024", "04", "30" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -619,7 +619,7 @@ boundary_tests["month_31_day_overflow_apr_to_may"] = function()
 		text = "2024/01/31",
 		pattern = "%Y/%m/%d",
 		component = "month",
-		captures = { "2024", "01", "31" }
+		captures = { "2024", "01", "31" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -633,7 +633,7 @@ boundary_tests["jan_31_plus_1_month_non_leap"] = function()
 		text = "2023/01/31",
 		pattern = "%Y/%m/%d",
 		component = "month",
-		captures = { "2023", "01", "31" }
+		captures = { "2023", "01", "31" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -647,7 +647,7 @@ boundary_tests["month_12_to_1_overflow"] = function()
 		text = "2024/12/15",
 		pattern = "%Y/%m/%d",
 		component = "month",
-		captures = { "2024", "12", "15" }
+		captures = { "2024", "12", "15" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -660,7 +660,7 @@ boundary_tests["month_1_to_12_underflow"] = function()
 		text = "2024/01/15",
 		pattern = "%Y/%m/%d",
 		component = "month",
-		captures = { "2024", "01", "15" }
+		captures = { "2024", "01", "15" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -680,7 +680,7 @@ format_tests["date_separator_slash_preserved"] = function()
 		text = "2024/03/15",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "03", "15" }
+		captures = { "2024", "03", "15" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -694,7 +694,7 @@ format_tests["date_separator_dash_preserved"] = function()
 		text = "2024-03-15",
 		pattern = "%Y-%m-%d",
 		component = "day",
-		captures = { "2024", "03", "15" }
+		captures = { "2024", "03", "15" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -708,7 +708,7 @@ format_tests["date_zero_padding_preserved"] = function()
 		text = "2024/01/05",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "01", "05" }
+		captures = { "2024", "01", "05" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result

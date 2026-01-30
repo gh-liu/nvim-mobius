@@ -88,7 +88,7 @@ local function create_rule(opts)
 	local word = opts.word ~= false
 	local cyclic = opts.cyclic ~= false
 	local preserve_case = opts.preserve_case == true
-	local priority = opts.priority or 56  -- Enums/constants at mid-high priority
+	local priority = opts.priority or 56 -- Enums/constants at mid-high priority
 
 	local is_grouped_input = is_grouped(elements)
 	local flat_elements, group_map = analyze_elements(elements)

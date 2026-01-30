@@ -1,6 +1,6 @@
 local M = {
 	id = "integer",
-	priority = 50,  -- Base numeric type; other numeric types override this
+	priority = 50, -- Base numeric type; other numeric types override this
 	cyclic = false,
 }
 

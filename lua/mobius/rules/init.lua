@@ -25,7 +25,7 @@ function M.pattern(opts)
 	local add_fn = opts.add ---@type fun(metadata: mobius.RuleMetadata, addend: number): string?
 	local cyclic = opts.cyclic or false
 	local word = opts.word or false
-	local priority = opts.priority or 50  -- Baseline; users can override
+	local priority = opts.priority or 50 -- Baseline; users can override
 	local id = opts.id or ("pattern_" .. pattern:gsub("%W", "_"))
 
 	---@param row number

@@ -171,7 +171,7 @@ local function create_lsp_enum_rule(opts)
 	local symbol_kinds = opts.symbol_kinds or get_default_symbol_kinds()
 	local exclude_labels = opts.exclude_labels or { "false", "true" }
 	local cyclic = opts.cyclic ~= false -- default true
-	local priority = opts.priority or 68  -- lsp_enum: highest priority (requires LSP context)
+	local priority = opts.priority or 68 -- lsp_enum: highest priority (requires LSP context)
 	local id = opts.id or "lsp_enum"
 	local timeout_ms = opts.timeout_ms or 150
 

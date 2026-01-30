@@ -1,7 +1,7 @@
 -- Decimal fraction (e.g., 1.5, 3.14)
 local M = {
 	id = "decimal_fraction",
-	priority = 54,  -- More specific than bare integers (has decimal point)
+	priority = 54, -- More specific than bare integers (has decimal point)
 	cyclic = false,
 }
 
@@ -31,7 +31,7 @@ function M.find(cursor)
 		-- cursor_offset = how many chars from match start to cursor
 		if col + 1 >= match[1] and col + 1 <= match[2] + 1 then
 			-- Cursor is within this match
-			metadata.cursor_offset = col + 1 - match[1]  -- 0-indexed offset from match start
+			metadata.cursor_offset = col + 1 - match[1] -- 0-indexed offset from match start
 		end
 		return metadata
 	end)
@@ -46,7 +46,7 @@ function M.add(addend, metadata)
 	if not metadata then
 		return nil
 	end
-	
+
 	local original_text = metadata.text
 	local cursor_offset = metadata.cursor_offset
 
@@ -65,18 +65,18 @@ function M.add(addend, metadata)
 		end
 
 		local has_positive_sign = original_text:match("^%+")
-		
+
 		local new_text
 		if decimal_places > 0 then
 			new_text = string.format("%." .. decimal_places .. "f", new_value)
 		else
 			new_text = tostring(math.floor(new_value))
 		end
-		
+
 		if has_positive_sign and not new_text:match("^%-") then
 			new_text = "+" .. new_text
 		end
-		
+
 		return { text = new_text, cursor = #new_text - 1 }
 	end
 
@@ -88,28 +88,28 @@ function M.add(addend, metadata)
 	end
 
 	-- cursor_offset is relative to start of match (0-indexed within match.col .. match.end_col)
-	local pos_in_number = cursor_offset + 1  -- Convert to 1-indexed position within original_text
+	local pos_in_number = cursor_offset + 1 -- Convert to 1-indexed position within original_text
 
 	-- Determine if cursor is before or after decimal point
 	-- Cursor on or before decimal point = modify integer part
 	local cursor_before_dot = pos_in_number <= dot_pos
-	
+
 	if cursor_before_dot then
 		-- Cursor before decimal: modify integer part
 		local sign = ""
 		local integer_part = ""
 		local frac_part = ""
-		
+
 		-- Extract sign
 		local sign_match = original_text:match("^([+-])")
 		if sign_match then
 			sign = sign_match
 		end
-		
+
 		-- Extract integer and fractional parts
-		local num_part = original_text:gsub("^[+-]", "")  -- Remove sign
+		local num_part = original_text:gsub("^[+-]", "") -- Remove sign
 		integer_part, frac_part = num_part:match("^(%d+)%.(%d+)$")
-		
+
 		if not integer_part or not frac_part then
 			return nil
 		end
@@ -123,7 +123,7 @@ function M.add(addend, metadata)
 		-- For -3.2: if sign is "-", the actual value is -3, so -3 + 1 = -2
 		local actual_value = (sign == "-") and -int_val or int_val
 		local new_actual_value = actual_value + (addend or 1)
-		
+
 		-- Extract new sign and absolute value
 		local new_sign = ""
 		local new_int_abs = new_actual_value
@@ -131,34 +131,28 @@ function M.add(addend, metadata)
 			new_sign = "-"
 			new_int_abs = -new_actual_value
 		end
-		
+
 		local new_text = new_sign .. tostring(new_int_abs) .. "." .. frac_part
-		
+
 		-- Cursor stays on integer part (at the end)
 		local int_len = #tostring(new_int_abs)
 		local sign_len = #new_sign
 		return { text = new_text, cursor = sign_len + int_len - 1 }
 	else
-		-- Cursor after decimal: modify the digit at cursor position (not always last place)
-		-- e.g. "1.46" with cursor on "4" (tenths): add 0.1 -> 1.56; on "6" (hundredths): add 0.01 -> 1.47
-		local num_part = original_text:gsub("^[+-]", "")  -- Remove sign
+		-- Cursor after decimal: add/subtract in the smallest decimal unit (last digit)
+		-- e.g. 19.72 + 1 -> 19.73 (add 0.01); 1.46 + 1 -> 1.47 (add 0.01 for 2 places)
+		local num_part = original_text:gsub("^[+-]", "") -- Remove sign
 		local integer_part, frac_part = num_part:match("^(%d+)%.(%d+)$")
-		
+
 		if not integer_part or not frac_part then
 			return nil
 		end
 
 		local frac_val = tonumber(frac_part)
 		local decimal_places = #frac_part
-		-- Which decimal place is the cursor in? (1 = first digit after dot, e.g. tenths)
-		local cursor_place = pos_in_number - dot_pos
-		if cursor_place < 1 then
-			cursor_place = 1
-		elseif cursor_place > decimal_places then
-			cursor_place = decimal_places
-		end
-		local frac_addend = addend * (10 ^ (-cursor_place))
-		
+		-- Add in the smallest unit: addend * 10^(-decimal_places)
+		local frac_addend = addend * (10 ^ -decimal_places)
+
 		local int_val = tonumber(integer_part)
 		local full_val = int_val + frac_val / (10 ^ decimal_places)
 		local new_full_val = full_val + frac_addend
@@ -172,11 +166,11 @@ function M.add(addend, metadata)
 
 		-- Format result preserving decimal places
 		local new_text = string.format("%s%." .. decimal_places .. "f", sign, new_full_val)
-		
-		-- Cursor stays on the digit we modified (same decimal place)
+
+		-- Cursor on the last decimal digit (the one we modified)
 		local sign_len = #sign
 		local int_part_new = tostring(math.floor(math.abs(new_full_val)))
-		local cursor_on_digit = sign_len + #int_part_new + 1 + (cursor_place - 1) - 1  -- 0-indexed
+		local cursor_on_digit = sign_len + #int_part_new + decimal_places -- 0-indexed
 		return { text = new_text, cursor = cursor_on_digit }
 	end
 end

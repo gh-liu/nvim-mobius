@@ -100,7 +100,7 @@ date_boundary_tests["leap_year_feb_29_increment"] = function()
 		text = "2024/02/29",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "02", "29" }
+		captures = { "2024", "02", "29" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -114,7 +114,7 @@ date_boundary_tests["non_leap_year_feb_boundary"] = function()
 		text = "2023/02/28",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2023", "02", "28" }
+		captures = { "2023", "02", "28" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -128,7 +128,7 @@ date_boundary_tests["month_30_to_31_days_preservation"] = function()
 		text = "2024/04/30",
 		pattern = "%Y/%m/%d",
 		component = "month",
-		captures = { "2024", "04", "30" }
+		captures = { "2024", "04", "30" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -143,7 +143,7 @@ date_boundary_tests["year_end_rollover"] = function()
 		text = "2024/12/31",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "12", "31" }
+		captures = { "2024", "12", "31" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -157,7 +157,7 @@ date_boundary_tests["year_start_rollback"] = function()
 		text = "2024/01/01",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "01", "01" }
+		captures = { "2024", "01", "01" },
 	}
 	local result = r.add(-1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -171,7 +171,7 @@ date_boundary_tests["iso_date_leap_year"] = function()
 		text = "2024-02-29",
 		pattern = "%Y-%m-%d",
 		component = "day",
-		captures = { "2024", "02", "29" }
+		captures = { "2024", "02", "29" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -185,7 +185,7 @@ date_boundary_tests["time_hour_wrap"] = function()
 		text = "23:30:00",
 		pattern = "%H:%M:%S",
 		component = "hour",
-		captures = { "23", "30", "00" }
+		captures = { "23", "30", "00" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -199,7 +199,7 @@ date_boundary_tests["time_minute_overflow"] = function()
 		text = "14:59:30",
 		pattern = "%H:%M:%S",
 		component = "minute",
-		captures = { "14", "59", "30" }
+		captures = { "14", "59", "30" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -223,7 +223,7 @@ color_boundary_tests["hexcolor_max_clamping"] = function()
 		r = 255,
 		g = 0,
 		b = 0,
-		original_case = "upper"
+		original_case = "upper",
 	}
 	local result = r.add(1, meta)
 	-- Should clamp at max
@@ -239,7 +239,7 @@ color_boundary_tests["hexcolor_min_clamping"] = function()
 		r = 0,
 		g = 0,
 		b = 0,
-		original_case = "lower"
+		original_case = "lower",
 	}
 	local result = r.add(-1, meta)
 	expect.equality(result, "#000000")
@@ -254,7 +254,7 @@ color_boundary_tests["hexcolor_case_sensitive_output"] = function()
 		r = 255,
 		g = 240,
 		b = 0,
-		original_case = "upper"
+		original_case = "upper",
 	}
 	local result = r.add(1, meta)
 	expect.equality(result, "#FFF100")
@@ -571,7 +571,7 @@ format_preservation_tests["date_separator_slash"] = function()
 		text = "2024/03/15",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "03", "15" }
+		captures = { "2024", "03", "15" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -585,7 +585,7 @@ format_preservation_tests["date_separator_dash"] = function()
 		text = "2024-03-15",
 		pattern = "%Y-%m-%d",
 		component = "day",
-		captures = { "2024", "03", "15" }
+		captures = { "2024", "03", "15" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result
@@ -599,7 +599,7 @@ format_preservation_tests["date_zero_padding"] = function()
 		text = "2024/01/05",
 		pattern = "%Y/%m/%d",
 		component = "day",
-		captures = { "2024", "01", "05" }
+		captures = { "2024", "01", "05" },
 	}
 	local result = r.add(1, meta)
 	local text = type(result) == "table" and result.text or result

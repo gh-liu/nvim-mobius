@@ -172,11 +172,11 @@ local function determine_component(pattern, match_text, cursor_offset, default_k
 	-- Length in match text for each specifier: Y=4, others 2 or 1
 	local spec_len = { Y = 4, y = 2, m = 2, d = 2, H = 2, I = 2, M = 2, S = 2 }
 	local match_pos = 0
-	
+
 	for i, comp in ipairs(components) do
 		local pat_len = comp.padding and 2 or 3 -- %Y vs %-Y
 		local comp_len = spec_len[comp.type] or (comp.padding and 2 or 1)
-		
+
 		-- Calculate literal characters between previous component and this one
 		local pattern_end_prev
 		if i == 1 then
@@ -185,12 +185,12 @@ local function determine_component(pattern, match_text, cursor_offset, default_k
 			local prev_pat_len = components[i - 1].padding and 2 or 3
 			pattern_end_prev = components[i - 1].pos + prev_pat_len - 1
 		end
-		
+
 		local literal_len = comp.pos - pattern_end_prev - 1
-		
+
 		-- Add literal characters from pattern to match_pos (e.g., '/', '-', ':')
 		match_pos = match_pos + math.max(0, literal_len)
-		
+
 		if cursor_offset >= match_pos and cursor_offset < match_pos + comp_len then
 			local kind_map = {
 				Y = "year",
@@ -220,7 +220,7 @@ function M.new(opts)
 	local default_kind = opts.default_kind or "day"
 	local only_valid = opts.only_valid ~= false -- default true
 	local word = opts.word or false
-	local priority = opts.priority or 55  -- Date rules at mid priority
+	local priority = opts.priority or 55 -- Date rules at mid priority
 	local id = opts.id or ("date_" .. pattern:gsub("%W", "_"))
 
 	local regex_pattern = build_regex_pattern(pattern)
@@ -239,89 +239,89 @@ function M.new(opts)
 				local lines = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)
 				local line = lines[1] or ""
 
-			-- Build word boundary pattern if needed
-			local search_pattern = regex_pattern
-			if word then
-				search_pattern = "%f[%w]" .. regex_pattern .. "%f[^%w]"
-			end
-
-			-- Find all matches
-			local matches = {}
-			local start_pos, end_pos = line:find(search_pattern)
-			while start_pos do
-				table.insert(matches, { start_pos, end_pos })
-				start_pos, end_pos = line:find(search_pattern, end_pos + 1)
-			end
-
-			-- Find best match based on cursor position
-			local best_match = nil
-			local best_score = -math.huge
-
-			for _, match in ipairs(matches) do
-				local start_pos, end_pos = match[1], match[2]
-				local match_len = end_pos - start_pos + 1
-				local match_text = line:sub(start_pos, end_pos)
-
-				-- Parse the match
-				local captures = { match_text:match(regex_pattern) }
-				if #captures == 0 then
-					goto continue
+				-- Build word boundary pattern if needed
+				local search_pattern = regex_pattern
+				if word then
+					search_pattern = "%f[%w]" .. regex_pattern .. "%f[^%w]"
 				end
 
-				-- Validate date if only_valid is true
-				if only_valid then
-					-- Map captures to year, month, day based on pattern order
-					local captures_map = {}
-					for i, comp in ipairs(components) do
-						captures_map[comp.type] = tonumber(captures[i]) or 0
+				-- Find all matches
+				local matches = {}
+				local start_pos, end_pos = line:find(search_pattern)
+				while start_pos do
+					table.insert(matches, { start_pos, end_pos })
+					start_pos, end_pos = line:find(search_pattern, end_pos + 1)
+				end
+
+				-- Find best match based on cursor position
+				local best_match = nil
+				local best_score = -math.huge
+
+				for _, match in ipairs(matches) do
+					local start_pos, end_pos = match[1], match[2]
+					local match_len = end_pos - start_pos + 1
+					local match_text = line:sub(start_pos, end_pos)
+
+					-- Parse the match
+					local captures = { match_text:match(regex_pattern) }
+					if #captures == 0 then
+						goto continue
 					end
-					
-					local y = captures_map.Y or captures_map.y or 0
-					local m = captures_map.m or 0
-					local d = captures_map.d or 0
-					
-					if y > 0 and m > 0 and d > 0 then
-						-- Adjust 2-digit year if needed
-						if y < 100 then
-							y = 2000 + y
+
+					-- Validate date if only_valid is true
+					if only_valid then
+						-- Map captures to year, month, day based on pattern order
+						local captures_map = {}
+						for i, comp in ipairs(components) do
+							captures_map[comp.type] = tonumber(captures[i]) or 0
 						end
-						if m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) then
-							goto continue
+
+						local y = captures_map.Y or captures_map.y or 0
+						local m = captures_map.m or 0
+						local d = captures_map.d or 0
+
+						if y > 0 and m > 0 and d > 0 then
+							-- Adjust 2-digit year if needed
+							if y < 100 then
+								y = 2000 + y
+							end
+							if m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) then
+								goto continue
+							end
 						end
 					end
+
+					local score = 0
+					if start_pos <= col + 1 and end_pos >= col + 1 then
+						score = constants.SCORE_CONTAINS_CURSOR + match_len
+					elseif start_pos > col + 1 then
+						score = constants.SCORE_AFTER_CURSOR_BASE - (start_pos - col)
+					else
+						score = constants.SCORE_BEFORE_CURSOR_BASE - (col - end_pos)
+					end
+
+					score = score + match_len * constants.SCORE_LENGTH_MULTIPLIER
+
+					if score > best_score then
+						best_score = score
+						local cursor_offset = (col + 1) - start_pos
+						local component = determine_component(pattern, match_text, cursor_offset, default_kind)
+						best_match = {
+							col = start_pos - 1,
+							end_col = end_pos - 1,
+							metadata = {
+								text = match_text,
+								pattern = pattern,
+								component = component,
+								captures = captures,
+							},
+						}
+					end
+
+					::continue::
 				end
 
-				local score = 0
-				if start_pos <= col + 1 and end_pos >= col + 1 then
-					score = constants.SCORE_CONTAINS_CURSOR + match_len
-				elseif start_pos > col + 1 then
-					score = constants.SCORE_AFTER_CURSOR_BASE - (start_pos - col)
-				else
-					score = constants.SCORE_BEFORE_CURSOR_BASE - (col - end_pos)
-				end
-
-				score = score + match_len * constants.SCORE_LENGTH_MULTIPLIER
-
-				if score > best_score then
-					best_score = score
-					local cursor_offset = (col + 1) - start_pos
-					local component = determine_component(pattern, match_text, cursor_offset, default_kind)
-					best_match = {
-						col = start_pos - 1,
-						end_col = end_pos - 1,
-						metadata = {
-							text = match_text,
-							pattern = pattern,
-							component = component,
-							captures = captures,
-						},
-					}
-				end
-
-				::continue::
-			end
-
-			return best_match
+				return best_match
 			end)
 
 			if not ok then
@@ -476,8 +476,14 @@ function M.new(opts)
 				local comp_len = (comp.type == "Y" and 4) or (comp.padding and 2 or 1)
 
 				local kind_map = {
-					Y = "year", y = "year", m = "month", d = "day",
-					H = "hour", I = "hour", M = "min", S = "sec",
+					Y = "year",
+					y = "year",
+					m = "month",
+					d = "day",
+					H = "hour",
+					I = "hour",
+					M = "min",
+					S = "sec",
 				}
 				if kind_map[comp.type] == component then
 					cursor_offset = result_pos

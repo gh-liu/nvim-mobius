@@ -15,7 +15,7 @@ MiniTest.setup({
 			-- Auto-discover all test_*.lua files in tests directory and subdirectories
 			local tests_dir = plugin_path .. "/tests"
 			local test_files = {}
-			
+
 			local function scan_dir(dir)
 				local entries = vim.fn.readdir(dir)
 				for _, name in ipairs(entries) do
@@ -26,7 +26,7 @@ MiniTest.setup({
 					end
 				end
 			end
-			
+
 			scan_dir(tests_dir)
 			table.sort(test_files)
 			return test_files

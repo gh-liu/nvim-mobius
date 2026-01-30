@@ -288,24 +288,21 @@ cursor_component_tests["decimal_cursor_before_dot"] = function()
 end
 
 cursor_component_tests["decimal_cursor_first_decimal_place"] = function()
-	-- Cursor on first decimal place (tenths) should modify tenths digit
-	-- "1.23" with cursor on "2" (first decimal) + 1 should add 0.1 = "1.33"
+	-- Cursor in fraction: add 1 in smallest unit (last digit). "1.23" + 0.01 = "1.24"
 	local result = rules_decimal_fraction.add(1, { text = "1.23", value = 1.23, cursor_offset = 2 })
 	local text = type(result) == "table" and result.text or result
-	expect.equality(text, "1.33")
+	expect.equality(text, "1.24")
 end
 
 cursor_component_tests["decimal_cursor_second_decimal_place"] = function()
-	-- Cursor on second decimal place (hundredths) should modify hundredths digit
-	-- "1.23" with cursor on "3" (second decimal) + 1 should add 0.01 = "1.24"
+	-- Same: add in smallest unit. "1.23" + 0.01 = "1.24"
 	local result = rules_decimal_fraction.add(1, { text = "1.23", value = 1.23, cursor_offset = 3 })
 	local text = type(result) == "table" and result.text or result
 	expect.equality(text, "1.24")
 end
 
 cursor_component_tests["decimal_cursor_many_places"] = function()
-	-- Many decimal places: cursor at 3rd decimal place
-	-- "1.234" with cursor at third decimal + 1 should add 0.001 = "1.235"
+	-- "1.234" + 0.001 (smallest unit) = "1.235"
 	local result = rules_decimal_fraction.add(1, { text = "1.234", value = 1.234, cursor_offset = 4 })
 	local text = type(result) == "table" and result.text or result
 	expect.equality(text, "1.235")
@@ -348,12 +345,27 @@ cursor_component_tests["decimal_cursor_on_dot"] = function()
 	expect.equality(text, "2.5")
 end
 
+cursor_component_tests["decimal_cursor_after_add_7_not_on_dot"] = function()
+	-- 2.7 + 7 with cursor on integer part: result "9.7", cursor must be on "9" (index 0), not on "." (index 1)
+	local result = rules_decimal_fraction.add(7, { text = "2.7", value = 2.7, cursor_offset = 0 })
+	expect.equality(type(result), "table")
+	expect.equality(result.text, "9.7")
+	expect.equality(result.cursor, 0)
+end
+
+cursor_component_tests["decimal_cursor_on_7_add_one_19_73"] = function()
+	-- 19.72 with cursor on "7": add 1 in smallest unit -> 19.73 (not 19.82)
+	local result = rules_decimal_fraction.add(1, { text = "19.72", value = 19.72, cursor_offset = 3 })
+	expect.equality(type(result), "table")
+	expect.equality(result.text, "19.73")
+	expect.equality(result.cursor, 4)
+end
+
 cursor_component_tests["decimal_cursor_fraction_decrement"] = function()
-	-- Cursor on fraction part, decrement with carry
-	-- "2.30" with cursor on tenths -1 = "2.20"
+	-- Cursor in fraction: add -1 in smallest unit. "2.30" - 0.01 = "2.29"
 	local result = rules_decimal_fraction.add(-1, { text = "2.30", value = 2.30, cursor_offset = 2 })
 	local text = type(result) == "table" and result.text or result
-	expect.equality(text, "2.20")
+	expect.equality(text, "2.29")
 end
 
 cursor_component_tests["decimal_cursor_fraction_with_carry"] = function()

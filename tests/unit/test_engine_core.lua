@@ -260,7 +260,10 @@ opts_rules_tests["opts_rules_override_global"] = function()
 	local buf = create_test_buf({ "true" })
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	-- Passing only integer rule should not match bool
-	engine.execute("increment", { visual = false, seqadd = false, step = 1, rules = { "mobius.rules.numeric.integer" } })
+	engine.execute(
+		"increment",
+		{ visual = false, seqadd = false, step = 1, rules = { "mobius.rules.numeric.integer" } }
+	)
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "true")
 end
 

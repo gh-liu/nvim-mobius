@@ -58,7 +58,7 @@ custom_rule_tests["custom_rule_creation"] = function()
 		end,
 		cyclic = false,
 	})
-	
+
 	-- Verify rule structure
 	expect.equality(custom.id, "prefix_number")
 	expect.equality(custom.priority, 50)
@@ -96,7 +96,7 @@ end
 composition_tests["enum_large_list"] = function()
 	local colors = constant({
 		elements = { "red", "green", "blue", "yellow", "orange", "purple" },
-		word = true
+		word = true,
 	})
 	expect.equality(colors.add(1, { text = "red" }), "green")
 	expect.equality(colors.add(5, { text = "red" }), "purple") -- +5 steps
@@ -115,13 +115,13 @@ buffer_override_tests["buffer_rules_inherit_true"] = function()
 		"mobius.rules.numeric.integer",
 		"mobius.rules.constant.bool",
 	}
-	
+
 	local buf = create_test_buf({ "42" })
 	vim.b.mobius_rules = { true, "mobius.rules.constant.yes_no" } -- Inherit global + add yes_no
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	-- Should match integer (from inherited global rules)
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	expect.equality(lines[1], "43")
@@ -129,17 +129,17 @@ end
 
 buffer_override_tests["buffer_rules_no_inherit"] = function()
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
-	
+
 	local buf = create_test_buf({ "yes" })
 	vim.b.mobius_rules = { "mobius.rules.constant.yes_no" } -- No inherit
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	-- Should match yes_no (integer rule not available)
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	expect.equality(lines[1], "no")
-	
+
 	-- Cleanup
 	vim.b.mobius_rules = nil
 end
@@ -149,21 +149,21 @@ buffer_override_tests["buffer_rules_priority_override"] = function()
 		require("mobius.rules.numeric.hex")({ priority = 50 }),
 		require("mobius.rules.numeric.integer")({ priority = 60 }),
 	}
-	
+
 	local buf = create_test_buf({ "0xFF" })
 	-- Override with higher hex priority
 	vim.b.mobius_rules = {
 		require("mobius.rules.numeric.hex")({ priority = 70 }),
 		require("mobius.rules.numeric.integer")({ priority = 50 }),
 	}
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	-- Should match hex despite integer having high priority globally
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	expect.equality(lines[1], "0x100")
-	
+
 	vim.b.mobius_rules = nil
 end
 
@@ -178,21 +178,21 @@ caching_tests["rule_cache_per_buffer"] = function()
 	-- After first execute, rules should be cached
 	local buf1 = create_test_buf({ "1" })
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	local lines = vim.api.nvim_buf_get_lines(buf1, 0, -1, false)
 	expect.equality(lines[1], "2")
-	
+
 	-- Cache should be per-buffer; different buffer should work independently
 	local buf2 = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_lines(buf2, 0, -1, false, { "5" })
 	vim.api.nvim_set_current_buf(buf2)
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	local lines2 = vim.api.nvim_buf_get_lines(buf2, 0, -1, false)
 	expect.equality(lines2[1], "6")
 end
@@ -200,11 +200,11 @@ end
 caching_tests["cache_clear_on_rule_change"] = function()
 	local buf = create_test_buf({ "5" })
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1], "6")
-	
+
 	-- Change global rules
 	vim.g.mobius_rules = { "mobius.rules.constant.bool" }
 	-- Cache should be invalid; but buf still has "6" which is not a bool
@@ -212,7 +212,7 @@ caching_tests["cache_clear_on_rule_change"] = function()
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "true" })
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1], "false")
 end
 
@@ -225,17 +225,17 @@ local engine_opts_tests = MiniTest.new_set()
 
 engine_opts_tests["execute_with_custom_rules_opts"] = function()
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
-	
+
 	local buf = create_test_buf({ "true" })
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
-	
+
 	-- Override rules via opts
 	engine.execute("increment", {
 		visual = false,
 		step = 1,
 		rules = { "mobius.rules.constant.bool" },
 	})
-	
+
 	-- Should match bool (from opts), not integer (from global)
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1], "false")
 end
@@ -244,7 +244,7 @@ engine_opts_tests["execute_step_parameter"] = function()
 	local buf = create_test_buf({ "5" })
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
-	
+
 	engine.execute("increment", { visual = false, step = 10 })
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1], "15")
 end
@@ -259,11 +259,11 @@ local module_loading_tests = MiniTest.new_set()
 module_loading_tests["string_reference_lazy_loads"] = function()
 	-- Using string reference should lazy-load the module
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" } -- String ref
-	
+
 	local buf = create_test_buf({ "7" })
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1], "8")
 end
 
@@ -271,11 +271,11 @@ module_loading_tests["direct_module_reference"] = function()
 	-- Direct module require should also work
 	local integer_rule = require("mobius.rules.numeric.integer")
 	vim.g.mobius_rules = { integer_rule }
-	
+
 	local buf = create_test_buf({ "7" })
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { visual = false, step = 1 })
-	
+
 	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, -1, false)[1], "8")
 end
 
@@ -289,14 +289,14 @@ local metadata_flow_tests = MiniTest.new_set()
 metadata_flow_tests["metadata_preservation_through_cycle"] = function()
 	-- Ensure metadata round-trips correctly through find/add
 	local rule = constant({ elements = { "alpha", "beta", "gamma" } })
-	
+
 	-- Simulate find result
 	local fake_match = { text = "alpha", index = 1 }
 	expect.equality(rule.add(1, fake_match), "beta")
-	
+
 	fake_match.text = "beta"
 	expect.equality(rule.add(1, fake_match), "gamma")
-	
+
 	fake_match.text = "gamma"
 	expect.equality(rule.add(1, fake_match), "alpha")
 end
@@ -335,10 +335,10 @@ no_match_tests["no_match_preserves_buffer"] = function()
 	local buf = create_test_buf({ "foo bar baz" })
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
 	local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 0 })
 	engine.execute("increment", { step = 1 })
-	
+
 	local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	expect.equality(before, after)
 end
@@ -346,10 +346,10 @@ end
 no_match_tests["no_match_preserves_cursor"] = function()
 	local buf = create_test_buf({ "foo bar" })
 	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
-	
+
 	vim.api.nvim_win_set_cursor(0, { 1, 2 })
 	engine.execute("increment", { step = 1 })
-	
+
 	local cursor = vim.api.nvim_win_get_cursor(0)
 	expect.equality({ cursor[1], cursor[2] }, { 1, 2 })
 end

@@ -7,7 +7,7 @@ local match_scorer = require("mobius.engine.match_scorer")
 ---@return mobius.Rule
 function M.new(opts)
 	opts = opts or {}
-	local priority = opts.priority or 60  -- semver: specific format with dots (higher than date)
+	local priority = opts.priority or 60 -- semver: specific format with dots (higher than date)
 	local id = opts.id or "semver"
 
 	return {
