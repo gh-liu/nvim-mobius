@@ -216,8 +216,28 @@ paren_tests["add_paren_to_bracket"] = function()
 	local match = rules_paren.find({ row = 0, col = 4 })
 	expect.equality(match ~= nil, true)
 	local result = rules_paren.add(1, match.metadata)
-	-- paren rule returns both opening and closing brackets
-	expect.equality(result, "[]")
+	-- paren rule preserves content inside brackets: (x) -> [x]
+	expect.equality(result, "[x]")
+end
+
+-- Cursor inside bracket content must NOT match (only ( or ) should trigger paren)
+paren_tests["no_match_when_cursor_inside_content"] = function()
+	local buf = create_test_buf({ "(balabalabala)" })
+	-- col 5 = first 'a' inside the parens (0-indexed: 0=(, 1=b, 2=a, 3=l, 4=a, 5=b, ...)
+	local match = rules_paren.find({ row = 0, col = 5 })
+	expect.equality(match, nil)
+end
+
+paren_tests["match_when_cursor_on_open_bracket"] = function()
+	local buf = create_test_buf({ "(bala)" })
+	local match = rules_paren.find({ row = 0, col = 0 })
+	expect.equality(match ~= nil, true)
+end
+
+paren_tests["match_when_cursor_on_close_bracket"] = function()
+	local buf = create_test_buf({ "(bala)" })
+	local match = rules_paren.find({ row = 0, col = 5 })
+	expect.equality(match ~= nil, true)
 end
 
 T["paren"] = paren_tests

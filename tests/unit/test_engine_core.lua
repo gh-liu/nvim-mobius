@@ -68,6 +68,15 @@ normal_mode_tests["normal_no_match"] = function()
 	expect.equality(before, after)
 end
 
+-- Cursor inside paren content must NOT trigger paren (only ( or ) should)
+normal_mode_tests["paren_no_change_when_cursor_inside_content"] = function()
+	vim.g.mobius_rules = { "mobius.rules.paren" }
+	local buf = create_test_buf({ "(balabalabala)" })
+	vim.api.nvim_win_set_cursor(0, { 1, 5 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "(balabalabala)")
+end
+
 T["normal_mode"] = normal_mode_tests
 
 -- ============================================================================

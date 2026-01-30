@@ -303,7 +303,8 @@ bracket_boundary_tests["paren_cycle_parens"] = function()
 	local match = rules_paren.find({ row = 0, col = 4 })
 	expect.equality(match ~= nil, true)
 	local result = rules_paren.add(1, match.metadata)
-	expect.equality(result, "[]")
+	-- Content inside brackets is preserved: (x) -> [x]
+	expect.equality(result, "[x]")
 end
 
 bracket_boundary_tests["paren_cycle_brackets"] = function()
@@ -311,7 +312,8 @@ bracket_boundary_tests["paren_cycle_brackets"] = function()
 	local match = rules_paren.find({ row = 0, col = 3 })
 	expect.equality(match ~= nil, true)
 	local result = rules_paren.add(1, match.metadata)
-	expect.equality(result, "{}")
+	-- Content inside brackets is preserved: [i] -> {i}
+	expect.equality(result, "{i}")
 end
 
 bracket_boundary_tests["paren_cycle_braces"] = function()
@@ -319,7 +321,8 @@ bracket_boundary_tests["paren_cycle_braces"] = function()
 	local match = rules_paren.find({ row = 0, col = 3 })
 	expect.equality(match ~= nil, true)
 	local result = rules_paren.add(1, match.metadata)
-	expect.equality(result, "()")
+	-- Content inside brackets is preserved: {x} -> (x)
+	expect.equality(result, "(x)")
 end
 
 T["bracket_boundary"] = bracket_boundary_tests

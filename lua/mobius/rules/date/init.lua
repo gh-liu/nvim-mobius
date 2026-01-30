@@ -122,8 +122,9 @@ local function parse_date_pattern(pattern)
 end
 
 -- Determine which component to increment based on cursor position in matched text
+-- Returns: component name string, or nil if cursor is not on a valid component
 local function determine_component(pattern, match_text, cursor_offset, default_kind)
-	-- Find position of each component in the pattern
+	-- Parse components from pattern
 	local components = {}
 	local i = 1
 	while i <= #pattern do
@@ -170,15 +171,26 @@ local function determine_component(pattern, match_text, cursor_offset, default_k
 
 	-- Length in match text for each specifier: Y=4, others 2 or 1
 	local spec_len = { Y = 4, y = 2, m = 2, d = 2, H = 2, I = 2, M = 2, S = 2 }
-	local pattern_pos = 0
 	local match_pos = 0
-	for _, comp in ipairs(components) do
+	
+	for i, comp in ipairs(components) do
 		local pat_len = comp.padding and 2 or 3 -- %Y vs %-Y
-		local literal_len = comp.pos - pattern_pos - pat_len
-		-- Advance past end of previous component (if any) then past literal (e.g. '-' in %Y-%m-%d)
-		match_pos = match_pos + (pattern_pos > 0 and 1 or 0) + literal_len
-
 		local comp_len = spec_len[comp.type] or (comp.padding and 2 or 1)
+		
+		-- Calculate literal characters between previous component and this one
+		local pattern_end_prev
+		if i == 1 then
+			pattern_end_prev = 0
+		else
+			local prev_pat_len = components[i - 1].padding and 2 or 3
+			pattern_end_prev = components[i - 1].pos + prev_pat_len - 1
+		end
+		
+		local literal_len = comp.pos - pattern_end_prev - 1
+		
+		-- Add literal characters from pattern to match_pos (e.g., '/', '-', ':')
+		match_pos = match_pos + math.max(0, literal_len)
+		
 		if cursor_offset >= match_pos and cursor_offset < match_pos + comp_len then
 			local kind_map = {
 				Y = "year",
@@ -193,9 +205,9 @@ local function determine_component(pattern, match_text, cursor_offset, default_k
 			return kind_map[comp.type] or default_kind
 		end
 		match_pos = match_pos + comp_len
-		pattern_pos = comp.pos
 	end
 
+	-- Cursor is not on any component (e.g., on a separator), return default_kind
 	return default_kind
 end
 
@@ -258,13 +270,23 @@ function M.new(opts)
 
 				-- Validate date if only_valid is true
 				if only_valid then
-					local year, month, day = captures[1], captures[2], captures[3]
-					if year and month and day then
-						local y, m, d = tonumber(year), tonumber(month), tonumber(day)
-						if y and m and d then
-							if m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) then
-								goto continue
-							end
+					-- Map captures to year, month, day based on pattern order
+					local captures_map = {}
+					for i, comp in ipairs(components) do
+						captures_map[comp.type] = tonumber(captures[i]) or 0
+					end
+					
+					local y = captures_map.Y or captures_map.y or 0
+					local m = captures_map.m or 0
+					local d = captures_map.d or 0
+					
+					if y > 0 and m > 0 and d > 0 then
+						-- Adjust 2-digit year if needed
+						if y < 100 then
+							y = 2000 + y
+						end
+						if m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) then
+							goto continue
 						end
 					end
 				end
@@ -466,9 +488,6 @@ function M.new(opts)
 				pattern_pos = comp.pos
 			end
 
-			if cursor_offset ~= nil then
-				return { text = result, cursor = cursor_offset }
-			end
 			return result
 		end,
 	}

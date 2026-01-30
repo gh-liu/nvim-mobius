@@ -95,9 +95,15 @@ function M.find(cursor)
 	end
 
 	local best = match_scorer.find_best_match(line, matches, col, function(text, match)
-		return { text = text, open = match.open, close = match.close }
+		-- Preserve content between brackets (text is open..inner..close)
+		local inner = #text >= 2 and text:sub(2, -2) or ""
+		return { text = text, open = match.open, close = match.close, inner = inner }
 	end)
 
+	-- Only apply when cursor is on the open or close bracket, not on content inside
+	if best and (col ~= best.col and col ~= best.end_col) then
+		return nil
+	end
 	return best
 end
 
@@ -134,7 +140,8 @@ function M.add(addend, metadata)
 	end
 
 	local next_bracket = bracket_pairs[next_idx]
-	return next_bracket.open .. next_bracket.close
+	local inner = (metadata.inner ~= nil) and metadata.inner or ""
+	return next_bracket.open .. inner .. next_bracket.close
 end
 
 -- Support customization via __call metatable
