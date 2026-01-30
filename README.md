@@ -13,7 +13,9 @@ A powerful and extensible Neovim plugin that intelligently increments/decrements
 
 ### Supported Scenarios
 
-| Scenario | Example | 默认 |
+All entries below are built-in rules; enable them via `vim.g.mobius_rules` or `vim.b.mobius_rules`. ✓ means included in the [Basic Setup](#basic-setup) example.
+
+| Scenario | Example | Default |
 |----------|---------|:----:|
 | Integer | `1` ↔ `2` ↔ `3`, supports `10<C-a>` | ✓ |
 | Decimal | `1.5` ↔ `2.5`, preserves decimal places | |
@@ -25,34 +27,51 @@ A powerful and extensible Neovim plugin that intelligently increments/decrements
 | HTTP methods | `GET` ↔ `POST` ↔ `PUT` ↔ `DELETE` | |
 | Brackets | `()` ↔ `[]` ↔ `{}` (handles nesting) | |
 | Markdown headings | `#` ↔ `##` ↔ `###` | |
-| Date | `2024/01/15` ↔ `2024/02/15` | |
-| RGB color | `rgb(100, 100, 100)` per-component increment | |
-| HTML tags | `<div>` ↔ `<span>` ↔ `<p>` | |
-| File paths | Relative/absolute path increment/decrement | |
-| Tree-sitter | Match by AST node type | |
-| LSP enum | Get config/options via LSP | |
+| Date | `2024/01/15` ↔ `2024/02/15` (multiple formats) | |
+| Semver | `1.0.0` ↔ `1.0.1`, major/minor/patch at cursor | |
+| Hex color | `#fff` ↔ `#100`, `#RRGGBB` per-component | |
+| Case style | `snake_case` ↔ `camelCase` ↔ `kebab-case` ↔ … | |
+| LSP enum | Get config/options via LSP (when LSP attached) | |
 
 ---
 
 ## Installation
 
-Use [lazy.nvim](https://github.com/folke/lazy.nvim):
+[lazy.nvim](https://github.com/folke/lazy.nvim): add to your spec. Use `keys` so the plugin loads on first use; optional `dev = true` for a local clone.
 
 ```lua
 {
   "gh-liu/nvim-mobius",
-  config = function()
-    -- Key mappings (dot repeat supported)
-    vim.keymap.set("n", "<C-a>", "<Plug>(MobiusIncrement)")
-    vim.keymap.set("n", "<C-x>", "<Plug>(MobiusDecrement)")
-    vim.keymap.set("n", "g<C-a>", "<Plug>(MobiusIncrementCumulative)")
-    vim.keymap.set("n", "g<C-x>", "<Plug>(MobiusDecrementCumulative)")
-    vim.keymap.set("x", "<C-a>", "<Plug>(MobiusIncrement)")
-    vim.keymap.set("x", "g<C-a>", "<Plug>(MobiusIncrementSeq)")
-    vim.keymap.set("x", "g<C-x>", "<Plug>(MobiusDecrementSeq)")
+  dev = true, -- optional
+  keys = {
+    { "<C-a>", "<Plug>(MobiusIncrement)", mode = { "n", "v" }, desc = "Increment" },
+    { "<C-x>", "<Plug>(MobiusDecrement)", mode = { "n", "v" }, desc = "Decrement" },
+    { "g<C-a>", "<Plug>(MobiusIncrementSeq)", mode = { "n", "v" }, remap = true, desc = "Increment seq / cumulative" },
+    { "g<C-x>", "<Plug>(MobiusDecrementSeq)", mode = { "n", "v" }, remap = true, desc = "Decrement seq / cumulative" },
+  },
+  init = function()
+    local ft_rules = {
+      go = {
+        true,
+        function()
+          return require("mobius.rules.lsp_enum")({
+            symbol_kinds = { vim.lsp.protocol.CompletionItemKind.Constant },
+            exclude_labels = { "false", "true" },
+          })
+        end,
+      },
+    }
+    vim.api.nvim_create_autocmd("FileType", {
+      pattern = vim.tbl_keys(ft_rules),
+      callback = function(args)
+        vim.b[args.buf].mobius_rules = ft_rules[args.match]
+      end,
+    })
   end,
 }
 ```
+
+The plugin sets default `g:mobius_rules` when loaded. Override in `config = function() ... end` if you want different global rules. More patterns: [Configuration](#configuration).
 
 ---
 
@@ -135,6 +154,28 @@ require("mobius.rules.lsp_enum")({
 })
 ```
 
+### Available Pre-built Rules
+
+| Module | Description |
+|--------|-------------|
+| `mobius.rules.numeric.integer` | Integers |
+| `mobius.rules.numeric.hex` | Hexadecimal (`0x...`) |
+| `mobius.rules.numeric.octal` | Octal (`0o...`) |
+| `mobius.rules.numeric.decimal_fraction` | Decimal numbers (`1.5`) |
+| `mobius.rules.constant.bool` | `true`/`false` |
+| `mobius.rules.constant.yes_no` | `yes`/`no` |
+| `mobius.rules.constant.on_off` | `on`/`off` |
+| `mobius.rules.constant.and_or` | `&&`/`\|\|`, `and`/`or` |
+| `mobius.rules.constant.http_method` | `GET`/`POST`/`PUT`/`DELETE` |
+| `mobius.rules.constant` | Generic constant cycler (custom elements) |
+| `mobius.rules.paren` | Brackets `()` ↔ `[]` ↔ `{}` |
+| `mobius.rules.markdown_header` | `#` ↔ `##` ↔ `###` |
+| `mobius.rules.date` | Date (multiple formats) |
+| `mobius.rules.semver` | Semantic version `major.minor.patch` |
+| `mobius.rules.hexcolor` | Hex colors `#RRGGBB` / `#RGB` |
+| `mobius.rules.case` | Case style (snake_case, camelCase, etc.) |
+| `mobius.rules.lsp_enum` | LSP-based enum (when LSP attached) |
+
 ---
 
 ## Usage
@@ -183,144 +224,23 @@ Press .  → 15   (+3)
 
 ## Writing Custom Rules
 
-### Rule Interface
-
-```lua
-{
-  id = "my_rule",
-  priority = 50,
-
-  -- Find matching text
-  find = function(row, col)
-    local buf = vim.api.nvim_get_current_buf()
-    local lines = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)
-    local line = lines[1] or ""
-
-    local pattern = "\\d+"
-    local start, end_pos = line:find(pattern)
-
-    -- Note: end_pos is 1-indexed, col is 0-indexed
-    if start and end_pos >= col + 1 then
-      return {
-        col = start - 1,
-        end_col = end_pos - 1,
-        metadata = {
-          text = line:sub(start, end_pos),
-        },
-      }
-    end
-    return nil
-  end,
-
-  -- Transform matched text
-  add = function(metadata, addend)
-    local num = tonumber(metadata.text) + (addend or 1)
-    return tostring(num)
-  end,
-
-  cyclic = false,  -- Wrap at boundaries?
-}
-```
-
-### Pattern Helper
+A rule is a table: `{ id?, priority?, find, add, cyclic? }`. `find(cursor)` returns `{ col, end_col, metadata }` or `nil`; `add(metadata, addend)` returns the new text. Use the pattern helper for regex-based rules:
 
 ```lua
 local Rules = require("mobius.rules")
 
 Rules.pattern({
-	id = "number",
-	pattern = "\\d+",
-	word = false,
-	add = function(metadata, addend)
-		return tostring(tonumber(metadata.text) + addend)
-	end,
-	cyclic = false,
-})
-```
-
-### Tree-sitter Example
-
-```lua
-{
-  id = "typescript_keyword",
-  priority = 60,
-
-  find = function(row, col)
-    local buf = vim.api.nvim_get_current_buf()
-    local parser = vim.treesitter.get_parser(buf, "typescript")
-    local tree = parser:parse()[1]
-    local root = tree:root()
-    local node = root:named_descendant_for_range(row, col, row, col)
-
-    if node and node:type() == "var" then
-      local start_row, start_col, end_row, end_col = node:range()
-      local text = vim.treesitter.get_node_text(node, buf)
-
-      return {
-        col = start_col,
-        end_col = end_col,
-        metadata = { text = text },
-      }
-    end
-    return nil
-  end,
-
+  id = "number",
+  pattern = "\\d+",
+  word = false,
   add = function(metadata, addend)
-    local cycle = { "let", "const", "var" }
-    for i, v in ipairs(cycle) do
-      if v == metadata.text then
-        local next_idx = ((i - 1 + addend) % #cycle) + 1
-        return cycle[next_idx]
-      end
-    end
-    return nil
+    return tostring(tonumber(metadata.text) + addend)
   end,
-
-  cyclic = true,
-}
-```
-
----
-
-## API Reference
-
-```lua
-local engine = require("mobius.engine")
-
--- Execute increment/decrement
-engine.execute("increment", {
-	visual = false, -- Visual mode
-	seqadd = false, -- Sequential add (visual mode)
-	step = 1, -- Step size
-	cumulative = false, -- Cumulative (normal mode)
-	rules = nil, -- Override rules (optional)
+  cyclic = false,
 })
-
--- Clear cached rules for buffer
-engine.clear_cache(buf)
 ```
 
----
-
-## Available Pre-built Rules
-
-- `mobius.rules.numeric.integer` - Integers
-- `mobius.rules.numeric.hex` - Hexadecimal (`0x...`)
-- `mobius.rules.numeric.octal` - Octal (`0o...`)
-- `mobius.rules.numeric.decimal_fraction` - Decimal numbers (`1.5`)
-- `mobius.rules.constant.bool` - `true`/`false`
-- `mobius.rules.constant.yes_no` - `yes`/`no`
-- `mobius.rules.constant.on_off` - `on`/`off`
-- `mobius.rules.constant` - Generic constant cycler
-- `mobius.rules.lsp_enum` - LSP-based (auto-enabled with LSP)
-
----
-
-## Documentation
-
-Vim help is in `doc/mobius.txt`. Run `:helptags doc` then `:h mobius`.
-
-For architecture and implementation details, see [DESIGN.md](DESIGN.md).
+For the full rule interface and pattern options, see `doc/mobius.txt` (`:h mobius-custom-rules`).
 
 ---
 
