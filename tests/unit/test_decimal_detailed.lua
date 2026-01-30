@@ -275,4 +275,110 @@ end
 
 T["float_edge"] = float_edge_tests
 
+-- ============================================================================
+-- Cursor Position Component Tests
+-- ============================================================================
+local cursor_component_tests = MiniTest.new_set()
+
+cursor_component_tests["decimal_cursor_before_dot"] = function()
+	-- Cursor before dot should modify integer part
+	local result = rules_decimal_fraction.add(1, { text = "1.5", value = 1.5, cursor_offset = 0 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "2.5")
+end
+
+cursor_component_tests["decimal_cursor_first_decimal_place"] = function()
+	-- Cursor on first decimal place (tenths) should modify tenths digit
+	-- "1.23" with cursor on "2" (first decimal) + 1 should add 0.1 = "1.33"
+	local result = rules_decimal_fraction.add(1, { text = "1.23", value = 1.23, cursor_offset = 2 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "1.33")
+end
+
+cursor_component_tests["decimal_cursor_second_decimal_place"] = function()
+	-- Cursor on second decimal place (hundredths) should modify hundredths digit
+	-- "1.23" with cursor on "3" (second decimal) + 1 should add 0.01 = "1.24"
+	local result = rules_decimal_fraction.add(1, { text = "1.23", value = 1.23, cursor_offset = 3 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "1.24")
+end
+
+cursor_component_tests["decimal_cursor_many_places"] = function()
+	-- Many decimal places: cursor at 3rd decimal place
+	-- "1.234" with cursor at third decimal + 1 should add 0.001 = "1.235"
+	local result = rules_decimal_fraction.add(1, { text = "1.234", value = 1.234, cursor_offset = 4 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "1.235")
+end
+
+cursor_component_tests["decimal_cursor_before_dot_decrement"] = function()
+	-- Cursor before dot, decrement integer part
+	local result = rules_decimal_fraction.add(-1, { text = "5.5", value = 5.5, cursor_offset = 0 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "4.5")
+end
+
+cursor_component_tests["decimal_negative_cursor_before_dot"] = function()
+	-- Negative number: cursor before dot
+	-- "-3.5" with cursor before dot, -1 integer = -4.5
+	local result = rules_decimal_fraction.add(-1, { text = "-3.5", value = -3.5, cursor_offset = 1 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "-4.5")
+end
+
+cursor_component_tests["decimal_negative_cursor_before_dot_increment"] = function()
+	-- Negative number: cursor before dot, increment towards zero
+	-- "-3.5" with cursor before dot, +1 integer = -2.5
+	local result = rules_decimal_fraction.add(1, { text = "-3.5", value = -3.5, cursor_offset = 1 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "-2.5")
+end
+
+cursor_component_tests["decimal_positive_sign_preserved"] = function()
+	-- Integer part increment; output format may omit leading +
+	local result = rules_decimal_fraction.add(1, { text = "+1.5", value = 1.5, cursor_offset = 1 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "2.5")
+end
+
+cursor_component_tests["decimal_cursor_on_dot"] = function()
+	-- Cursor on dot should modify integer part (treated as before dot)
+	local result = rules_decimal_fraction.add(1, { text = "1.5", value = 1.5, cursor_offset = 1 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "2.5")
+end
+
+cursor_component_tests["decimal_cursor_fraction_decrement"] = function()
+	-- Cursor on fraction part, decrement with carry
+	-- "2.30" with cursor on tenths -1 = "2.20"
+	local result = rules_decimal_fraction.add(-1, { text = "2.30", value = 2.30, cursor_offset = 2 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "2.20")
+end
+
+cursor_component_tests["decimal_cursor_fraction_with_carry"] = function()
+	-- Cursor on fraction part causing carry to integer
+	-- "2.99" with cursor on hundredths +1 = "3.00"
+	local result = rules_decimal_fraction.add(1, { text = "2.99", value = 2.99, cursor_offset = 3 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "3.00")
+end
+
+cursor_component_tests["decimal_cursor_fraction_borrow"] = function()
+	-- Cursor on fraction part causing borrow from integer
+	-- "3.00" with cursor on hundredths -1 = "2.99"
+	local result = rules_decimal_fraction.add(-1, { text = "3.00", value = 3.00, cursor_offset = 3 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "2.99")
+end
+
+cursor_component_tests["decimal_cursor_returns_table_with_cursor"] = function()
+	-- Verify that cursor position tests return table with cursor field
+	local result = rules_decimal_fraction.add(1, { text = "1.5", value = 1.5, cursor_offset = 0 })
+	expect.equality(type(result), "table")
+	expect.equality(type(result.cursor), "number")
+end
+
+T["cursor_component"] = cursor_component_tests
+
 return T

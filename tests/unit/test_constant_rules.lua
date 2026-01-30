@@ -8,6 +8,8 @@ local rules_bool = require("mobius.rules.constant.bool")
 local rules_yes_no = require("mobius.rules.constant.yes_no")
 local rules_on_off = require("mobius.rules.constant.on_off")
 local rules_constant = require("mobius.rules.constant")
+local rules_http_method = require("mobius.rules.constant.http_method")
+local rules_and_or = require("mobius.rules.constant.and_or")
 
 local function create_test_buf(lines)
 	local buf = vim.api.nvim_create_buf(false, true)
@@ -136,5 +138,154 @@ constant_tests["decrement"] = function()
 end
 
 T["constant"] = constant_tests
+
+-- ============================================================================
+-- HTTP Methods Tests
+-- ============================================================================
+local http_tests = MiniTest.new_set()
+
+http_tests["http_full_cycle_forward"] = function()
+	-- GET -> POST -> PUT -> PATCH -> DELETE -> HEAD -> OPTIONS -> GET
+	expect.equality(rules_http_method.add(1, { text = "GET" }), "POST")
+	expect.equality(rules_http_method.add(1, { text = "POST" }), "PUT")
+	expect.equality(rules_http_method.add(1, { text = "PUT" }), "PATCH")
+	expect.equality(rules_http_method.add(1, { text = "PATCH" }), "DELETE")
+	expect.equality(rules_http_method.add(1, { text = "DELETE" }), "HEAD")
+	expect.equality(rules_http_method.add(1, { text = "HEAD" }), "OPTIONS")
+	expect.equality(rules_http_method.add(1, { text = "OPTIONS" }), "GET")
+end
+
+http_tests["http_full_cycle_backward"] = function()
+	-- GET -> OPTIONS -> HEAD -> DELETE -> PATCH -> PUT -> POST -> GET
+	expect.equality(rules_http_method.add(-1, { text = "GET" }), "OPTIONS")
+	expect.equality(rules_http_method.add(-1, { text = "OPTIONS" }), "HEAD")
+	expect.equality(rules_http_method.add(-1, { text = "HEAD" }), "DELETE")
+	expect.equality(rules_http_method.add(-1, { text = "DELETE" }), "PATCH")
+	expect.equality(rules_http_method.add(-1, { text = "PATCH" }), "PUT")
+	expect.equality(rules_http_method.add(-1, { text = "PUT" }), "POST")
+	expect.equality(rules_http_method.add(-1, { text = "POST" }), "GET")
+end
+
+http_tests["http_large_increment"] = function()
+	-- GET + 7 wraps (cycle length 7: GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS)
+	expect.equality(rules_http_method.add(7, { text = "GET" }), "GET")
+end
+
+http_tests["http_large_decrement"] = function()
+	-- POST - 5 (order: GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS)
+	expect.equality(rules_http_method.add(-5, { text = "POST" }), "PATCH")
+end
+
+http_tests["http_find_basic"] = function()
+	local buf = create_test_buf({ "GET /api/users" })
+	local match = rules_http_method.find({ row = 0, col = 2 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "GET")
+	end
+end
+
+http_tests["http_find_post"] = function()
+	local buf = create_test_buf({ "POST /api/data" })
+	local match = rules_http_method.find({ row = 0, col = 3 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "POST")
+	end
+end
+
+http_tests["http_no_match_lowercase"] = function()
+	-- HTTP methods are uppercase, lowercase should not match
+	local buf = create_test_buf({ "get /api/users" })
+	local match = rules_http_method.find({ row = 0, col = 1 })
+	expect.equality(match, nil)
+end
+
+T["http_method"] = http_tests
+
+-- ============================================================================
+-- And/Or Operators Tests
+-- ============================================================================
+local and_or_tests = MiniTest.new_set()
+
+and_or_tests["and_or_toggle_symbol"] = function()
+	-- && <-> ||
+	expect.equality(rules_and_or.add(1, { text = "&&" }), "||")
+	expect.equality(rules_and_or.add(1, { text = "||" }), "&&")
+end
+
+and_or_tests["and_or_text_toggle"] = function()
+	-- and <-> or
+	expect.equality(rules_and_or.add(1, { text = "and" }), "or")
+	expect.equality(rules_and_or.add(1, { text = "or" }), "and")
+end
+
+and_or_tests["and_or_uppercase_toggle"] = function()
+	-- AND <-> OR
+	expect.equality(rules_and_or.add(1, { text = "AND" }), "OR")
+	expect.equality(rules_and_or.add(1, { text = "OR" }), "AND")
+end
+
+and_or_tests["and_or_mixed_case_not_supported"] = function()
+	-- Mixed case like "And" should not match (only exact groups)
+	-- The rule defines: {{"&&", "||"}, {"and", "or"}, {"AND", "OR"}}
+	local buf = create_test_buf({ "if And Or" })
+	-- "And" is not in any defined group
+	local match = rules_and_or.find({ row = 0, col = 3 })
+	expect.equality(match, nil)
+end
+
+and_or_tests["and_or_spacing_preserved"] = function()
+	-- && with spacing should match the operator
+	local buf = create_test_buf({ "a && b" })
+	local match = rules_and_or.find({ row = 0, col = 3 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "&&")
+	end
+end
+
+and_or_tests["and_or_find_symbol"] = function()
+	local buf = create_test_buf({ "if (a && b)" })
+	local match = rules_and_or.find({ row = 0, col = 7 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "&&")
+	end
+end
+
+and_or_tests["and_or_find_text"] = function()
+	local buf = create_test_buf({ "if a and b" })
+	local match = rules_and_or.find({ row = 0, col = 4 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "and")
+	end
+end
+
+and_or_tests["and_or_find_uppercase"] = function()
+	local buf = create_test_buf({ "if A AND B" })
+	local match = rules_and_or.find({ row = 0, col = 4 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "AND")
+	end
+end
+
+and_or_tests["and_or_word_boundary"] = function()
+	-- "and" inside "android" should not match
+	local buf = create_test_buf({ "android phone" })
+	local match = rules_and_or.find({ row = 0, col = 2 })
+	expect.equality(match, nil)
+end
+
+and_or_tests["and_or_decrement"] = function()
+	-- Decrement should cycle backwards
+	expect.equality(rules_and_or.add(-1, { text = "||" }), "&&")
+	expect.equality(rules_and_or.add(-1, { text = "or" }), "and")
+	expect.equality(rules_and_or.add(-1, { text = "OR" }), "AND")
+end
+
+T["and_or"] = and_or_tests
 
 return T

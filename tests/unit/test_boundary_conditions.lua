@@ -385,6 +385,280 @@ end
 T["cross_rule"] = cross_rule_tests
 
 -- ============================================================================
+-- Priority and Conflict Tests
+-- ============================================================================
+local priority_tests = MiniTest.new_set()
+
+priority_tests["decimal_vs_integer_priority"] = function()
+	-- 1.5 should match decimal (priority 54), not integer (priority 50)
+	local buf = create_test_buf({ "result: 1.5" })
+	local match_decimal = rules_decimal.find({ row = 0, col = 8 })
+	local match_integer = rules_integer.find({ row = 0, col = 8 })
+	-- Decimal should match
+	expect.equality(match_decimal ~= nil, true)
+	if match_decimal then
+		expect.equality(match_decimal.metadata.text, "1.5")
+	end
+end
+
+priority_tests["hex_vs_integer_priority"] = function()
+	-- 0xFF should match hex (priority 51), not integer (priority 50)
+	local buf = create_test_buf({ "color: 0xFF" })
+	local match_hex = rules_hex.find({ row = 0, col = 8 })
+	local match_integer = rules_integer.find({ row = 0, col = 8 })
+	-- Hex should match
+	expect.equality(match_hex ~= nil, true)
+	if match_hex then
+		expect.equality(match_hex.metadata.text, "0xFF")
+	end
+	-- Integer may match the leading "0" only; hex should match full "0xFF"
+	if match_integer then
+		expect.equality(match_integer.metadata.text, "0")
+	end
+end
+
+priority_tests["octal_vs_integer_priority"] = function()
+	-- 0o755 should match octal (priority 51), not integer (priority 50)
+	local rules_octal = require("mobius.rules.numeric.octal")
+	local buf = create_test_buf({ "chmod 0o755" })
+	local match_octal = rules_octal.find({ row = 0, col = 6 })
+	local match_integer = rules_integer.find({ row = 0, col = 6 })
+	-- Octal should match
+	expect.equality(match_octal ~= nil, true)
+	if match_octal then
+		expect.equality(match_octal.metadata.text, "0o755")
+	end
+	-- Integer may match the leading "0" only; octal should match full "0o755"
+	if match_integer then
+		expect.equality(match_integer.metadata.text, "0")
+	end
+end
+
+priority_tests["hexcolor_vs_hex_priority"] = function()
+	-- #FF0000 is hexcolor, should match hexcolor rule (priority 60) not hex (priority 51)
+	local rules_hexcolor = require("mobius.rules.hexcolor")
+	local buf = create_test_buf({ "color: #FF0000" })
+	local match_hexcolor = rules_hexcolor().find({ row = 0, col = 8 })
+	local match_hex = rules_hex.find({ row = 0, col = 8 })
+	-- hexcolor should match
+	expect.equality(match_hexcolor ~= nil, true)
+	if match_hexcolor then
+		expect.equality(match_hexcolor.metadata.text, "#FF0000")
+	end
+	-- hex should not match (different format)
+	expect.equality(match_hex, nil)
+end
+
+priority_tests["semver_vs_integer_priority"] = function()
+	-- 1.2.3 is semver (priority 60), not multiple integers
+	local rules_semver = require("mobius.rules.semver")
+	local buf = create_test_buf({ "version: 1.2.3" })
+	local match_semver = rules_semver().find({ row = 0, col = 9 })
+	-- semver should match
+	expect.equality(match_semver ~= nil, true)
+	if match_semver then
+		expect.equality(match_semver.metadata.text, "1.2.3")
+	end
+end
+
+T["priority"] = priority_tests
+
+-- ============================================================================
+-- Cursor Positioning Tests
+-- ============================================================================
+local cursor_position_tests = MiniTest.new_set()
+
+cursor_position_tests["cursor_at_line_end"] = function()
+	local buf = create_test_buf({ "123" })
+	vim.api.nvim_win_set_cursor(0, { 1, 3 }) -- cursor after "123"
+	local match = rules_integer.find({ row = 0, col = 2 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+cursor_position_tests["cursor_at_line_start"] = function()
+	local buf = create_test_buf({ "123" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	local match = rules_integer.find({ row = 0, col = 0 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+cursor_position_tests["cursor_middle_of_multi_digit"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 5 }) -- cursor on "2"
+	local match = rules_integer.find({ row = 0, col = 4 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+cursor_position_tests["cursor_after_match"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 7 }) -- cursor after "123"
+	local match = rules_integer.find({ row = 0, col = 6 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+cursor_position_tests["cursor_before_match"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 3 }) -- cursor before "123"
+	local match = rules_integer.find({ row = 0, col = 2 })
+	-- find() returns nearest match; cursor at col 2 may still resolve to "123"
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+cursor_position_tests["cursor_on_first_digit"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 4 }) -- cursor on "1"
+	local match = rules_integer.find({ row = 0, col = 3 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+T["cursor_position"] = cursor_position_tests
+
+-- ============================================================================
+-- Format Preservation Tests
+-- ============================================================================
+local format_preservation_tests = MiniTest.new_set()
+
+format_preservation_tests["hex_lowercase_output"] = function()
+	-- Lowercase hex should stay lowercase
+	expect.equality(rules_hex.add(1, { text = "0xff", value = 255 }), "0x100")
+end
+
+format_preservation_tests["hex_uppercase_output"] = function()
+	-- Uppercase hex should stay uppercase
+	expect.equality(rules_hex.add(1, { text = "0XFF", value = 255 }), "0X100")
+end
+
+format_preservation_tests["hex_mixed_case_normalize"] = function()
+	-- Mixed case hex: implementation behavior
+	local result = rules_hex.add(1, { text = "0xFf", value = 255 })
+	-- Should normalize to one case
+	expect.equality(result, "0x100")
+end
+
+format_preservation_tests["decimal_places_preserved"] = function()
+	local result = rules_decimal.add(1, { text = "1.25", value = 1.25 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "2.25")
+end
+
+format_preservation_tests["decimal_trailing_zeros"] = function()
+	local result = rules_decimal.add(0, { text = "1.50", value = 1.5 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "1.50")
+end
+
+format_preservation_tests["date_separator_slash"] = function()
+	local r = date_factory("%Y/%m/%d")
+	local meta = {
+		text = "2024/03/15",
+		pattern = "%Y/%m/%d",
+		component = "day",
+		captures = { "2024", "03", "15" }
+	}
+	local result = r.add(1, meta)
+	local text = type(result) == "table" and result.text or result
+	-- Slash separator preserved
+	expect.equality(text, "2024/03/16")
+end
+
+format_preservation_tests["date_separator_dash"] = function()
+	local r = date_factory("%Y-%m-%d")
+	local meta = {
+		text = "2024-03-15",
+		pattern = "%Y-%m-%d",
+		component = "day",
+		captures = { "2024", "03", "15" }
+	}
+	local result = r.add(1, meta)
+	local text = type(result) == "table" and result.text or result
+	-- Dash separator preserved
+	expect.equality(text, "2024-03-16")
+end
+
+format_preservation_tests["date_zero_padding"] = function()
+	local r = date_factory("%Y/%m/%d")
+	local meta = {
+		text = "2024/01/05",
+		pattern = "%Y/%m/%d",
+		component = "day",
+		captures = { "2024", "01", "05" }
+	}
+	local result = r.add(1, meta)
+	local text = type(result) == "table" and result.text or result
+	-- Zero padding preserved
+	expect.equality(text, "2024/01/06")
+end
+
+T["format_preservation"] = format_preservation_tests
+
+-- ============================================================================
+-- Error Recovery Tests
+-- ============================================================================
+local error_recovery_tests = MiniTest.new_set()
+
+error_recovery_tests["nil_from_rule_add"] = function()
+	-- Rule that returns nil (boundary case)
+	local r = require("mobius.rules.semver")()
+	local result = r.add(-1, { text = "0.0.0", component = "major", major = 0, minor = 0, patch = 0 })
+	-- Cannot go below 0, returns nil
+	expect.equality(result, nil)
+end
+
+error_recovery_tests["empty_buffer"] = function()
+	local buf = create_test_buf({ "" })
+	local match = rules_integer.find({ row = 0, col = 0 })
+	expect.equality(match, nil)
+end
+
+error_recovery_tests["only_whitespace"] = function()
+	local buf = create_test_buf({ "   " })
+	local match = rules_integer.find({ row = 0, col = 1 })
+	expect.equality(match, nil)
+end
+
+error_recovery_tests["unicode_in_text"] = function()
+	local buf = create_test_buf({ "value: 123 你好" })
+	local match = rules_integer.find({ row = 0, col = 8 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "123")
+	end
+end
+
+error_recovery_tests["integer_add_with_nil_metadata"] = function()
+	-- Should handle nil metadata gracefully
+	local result = rules_integer.add(1, nil)
+	expect.equality(result, nil)
+end
+
+error_recovery_tests["decimal_add_with_zero_increment"] = function()
+	-- Adding 0 should preserve format
+	local result = rules_decimal.add(0, { text = "1.50", value = 1.5 })
+	local text = type(result) == "table" and result.text or result
+	expect.equality(text, "1.50")
+end
+
+T["error_recovery"] = error_recovery_tests
+
+-- ============================================================================
 -- Error Handling: Invalid Inputs and Boundary Cases
 -- ============================================================================
 local error_handling_tests = MiniTest.new_set()
