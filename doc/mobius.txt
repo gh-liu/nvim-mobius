@@ -1,0 +1,302 @@
+*mobius.txt*	Intelligent increment/decrement for Neovim
+
+==============================================================================
+CONTENTS                                                    *mobius-contents*
+==============================================================================
+  1. Overview                    |mobius-overview|
+  2. Installation                |mobius-installation|
+  3. Configuration               |mobius-config|
+  4. Key mappings                 |mobius-keymaps|
+  5. Custom rules                 |mobius-custom-rules|
+  6. API                          |mobius-api|
+  7. Options                      |mobius-options|
+
+==============================================================================
+1. OVERVIEW                                                     *mobius-overview*
+==============================================================================
+
+nvim-mobius is an extensible Neovim plugin that increments or decrements
+values under the cursor (or in a visual selection) using a rule-based
+system. Rules define how to find a value and how to compute the next one.
+
+Features:
+  - Global and buffer-local rules (|g:mobius_rules|, |b:mobius_rules|)
+  - Lazy-loaded rule modules (string references)
+  - Normal and visual mode; sequential increment in visual (g<C-a> style)
+  - Dot repeat support (|mobius-keymaps|)
+  - Pre-built rules: number, hex, octal, bool, yes_no, on_off, enum, lsp_enum
+
+Supported values:
+  - Numbers: integers, decimals, hex (0xFF), octal (0o755)
+  - Booleans: true/false, yes/no, on/off (with case variants)
+  - Operators: &&/||, and/or
+  - HTTP methods: GET/POST/PUT/PATCH/DELETE
+  - Brackets: ()/{}/[]
+  - Markdown headings: #/##/###
+  - And more via custom rules
+
+==============================================================================
+2. INSTALLATION                                           *mobius-installation*
+==============================================================================
+
+Using lazy.nvim: >
+  {
+    "gh-liu/nvim-mobius",
+    config = function()
+      vim.g.mobius_rules = {
+        "mobius.rules.numeric.integer",
+        "mobius.rules.numeric.hex",
+        "mobius.rules.constant.bool",
+      }
+
+      vim.keymap.set("n", "<C-a>", "<Plug>(MobiusIncrement)")
+      vim.keymap.set("n", "<C-x>", "<Plug>(MobiusDecrement)")
+      vim.keymap.set("x", "<C-a>", "<Plug>(MobiusIncrement)")
+      vim.keymap.set("x", "g<C-a>", "<Plug>(MobiusIncrementSeq)")
+    end,
+  }
+<
+
+Note: Normal mode mappings use g@ operator for native . repeat support.
+
+Generate help tags: >
+  :helptags doc
+<
+
+==============================================================================
+3. CONFIGURATION                                                *mobius-config*
+==============================================================================
+
+Rules are taken from global and buffer-local variables. By default, buffer
+rules are prepended to global rules; within the combined list, higher
+|priority| wins.
+
+Global rules: >
+  vim.g.mobius_rules = {
+    "mobius.rules.numeric.integer",
+    "mobius.rules.numeric.hex",
+    "mobius.rules.constant.bool",
+  }
+<
+
+Buffer-local (e.g. by filetype): >
+   vim.api.nvim_create_autocmd("FileType", {
+     pattern = "typescript",
+     callback = function(event)
+       vim.b[event.buf].mobius_rules = {
+         "mobius.rules.numeric.integer",
+         require("mobius.rules.constant")({ elements = { "let", "const", "var" }, word = true }),
+       }
+     end,
+   })
+<
+
+*b:mobius_rules inherit*: If the first element of b:mobius_rules is boolean
+|true|, it means "inherit": effective rules = g:mobius_rules .. b[2..].
+Example: >
+  vim.b[event.buf].mobius_rules = { true,
+    "mobius.rules.markdown_header" }
+<
+
+Each entry may be:
+  - A string: module path, lazy-loaded on first use (e.g. "mobius.rules.numeric.integer")
+  - A table: full rule definition (|mobius-custom-rules|)
+  - A callable table: e.g. require("mobius.rules.numeric.integer")({ priority = 60 })
+
+Customizing pre-built rules: >
+  local integer_rule = require("mobius.rules.numeric.integer")
+  vim.g.mobius_rules = {
+    integer_rule({ priority = 60 }),
+    "mobius.rules.numeric.hex",
+  }
+<
+
+==============================================================================
+4. KEY MAPPINGS                                                *mobius-keymaps*
+==============================================================================
+
+The plugin defines <Plug> mappings only; map them in your config.
+
+Normal mode: >
+  <Plug>(MobiusIncrement)   increment at cursor
+  <Plug>(MobiusDecrement)   decrement at cursor
+  <Plug>(MobiusIncrementCumulative)   g<C-a> style: cumulative
+  <Plug>(MobiusDecrementCumulative)   g<C-x> style: cumulative
+<
+Visual mode (same addend for all matches): >
+  <Plug>(MobiusIncrement)
+  <Plug>(MobiusDecrement)
+<
+Visual mode (sequential: 1st +step, 2nd +2*step, ...): >
+  <Plug>(MobiusIncrementSeq)
+  <Plug>(MobiusDecrementSeq)
+<
+
+Example: >
+  vim.keymap.set("n", "<C-a>", "<Plug>(MobiusIncrement)")
+  vim.keymap.set("n", "<C-x>", "<Plug>(MobiusDecrement)")
+  vim.keymap.set("n", "g<C-a>", "<Plug>(MobiusIncrementCumulative)")
+  vim.keymap.set("n", "g<C-x>", "<Plug>(MobiusDecrementCumulative)")
+  vim.keymap.set("x", "<C-a>", "<Plug>(MobiusIncrement)")
+  vim.keymap.set("x", "g<C-a>", "<Plug>(MobiusIncrementSeq)")
+  vim.keymap.set("x", "g<C-x>", "<Plug>(MobiusDecrementSeq)")
+<
+
+Count (e.g. 3<C-a>) uses v:count1 as step.
+
+*Dot repeat*: Normal mode uses g@ operator for native . repeat support.
+No custom mapping needed; just press . after <C-a>/<C-x>.
+
+*Cumulative (g<C-a> / g<C-x>)*: Each dot repeat adds one more than the previous.
+  - First g<C-a> on "5" -> "6" (add 1). Move to "10", "." -> "12" (add 2).
+  - Use case: number a list by stepping 1, 2, 3...
+  - Cumulative mode uses custom repeat tracking.
+
+==============================================================================
+5. CUSTOM RULES                                          *mobius-custom-rules*
+==============================================================================
+
+A rule is a table with at least:
+
+  id          (string)  Optional identifier
+  priority    (number)   Higher = tried first (default 50)
+  find        (function) find(row, col) -> match or nil
+  add         (function) add(metadata, addend) -> new_text or nil
+  cyclic      (boolean) If true, wrap at boundaries (e.g. true <-> false)
+
+*find(row, col)*
+  - row, col: 0-indexed (line and column).
+  - Returns nil or: { col = start_col, end_col = end_col,
+                      metadata = { text = "...", ... } }
+  - col/end_col are 0-indexed; metadata.text required.
+
+*add(metadata, addend)*
+  - metadata: table from find (at least .text).
+  - addend: number (+ for increment, - for decrement).
+  - Returns new string, or nil (no change / boundary with cyclic = false).
+
+Example (minimal): >
+  {
+    id = "number",
+    priority = 50,
+    find = function(row, col)
+      local lines = vim.api.nvim_buf_get_lines(0, row, row + 1, false)
+      local line = lines[1] or ""
+      local s, e = line:find("\\d+")
+      if s and e >= col + 1 then
+        return {
+          col = s - 1,
+          end_col = e - 1,
+          metadata = { text = line:sub(s, e) },
+        }
+      end
+      return nil
+    end,
+    add = function(metadata, addend)
+      return tostring(tonumber(metadata.text) + addend)
+    end,
+    cyclic = false,
+  }
+<
+
+Pattern helper: >
+  local Rules = require("mobius.rules")
+  Rules.pattern({
+    id = "number",
+    pattern = "\\d+",
+    word = false,
+    add = function(metadata, addend)
+      return tostring(tonumber(metadata.text) + addend)
+    end,
+    cyclic = false,
+  })
+<
+
+==============================================================================
+6. API                                                           *mobius-api*
+==============================================================================
+
+engine.execute(direction, opts)                    *mobius-engine-execute*
+
+  direction   "increment" | "decrement"
+  opts        table:
+    visual    boolean  Use visual selection (default false)
+    seqadd    boolean  Sequential add in visual (default false)
+    step      number  Step size (default 1)
+    cumulative boolean  Cumulative: each repeat adds more (default false)
+    rules     table   Rule set for this call only (same format as
+                      g:mobius_rules); if omitted, use global + buffer rules.
+
+  Example: >
+    local engine = require("mobius.engine")
+    engine.execute("increment", { step = 1 })
+    engine.execute("increment", { visual = true, seqadd = true })
+<
+
+engine.clear_cache(buf)                          *mobius-engine-clear-cache*
+
+  buf   number  Buffer ID; default is current buffer
+
+  Clear cached rules for a buffer. Useful after modifying vim.b.mobius_rules.
+
+engine.repeat_last()                               *mobius-engine-repeat*
+
+  Repeats the last cumulative action. For normal mode, use native .
+  repeat instead. This is only needed for cumulative mode (g<C-a>/g<C-x>).
+
+==============================================================================
+7. OPTIONS                                                    *mobius-options*
+==============================================================================
+
+*cyclic*                                         (rule option)
+  If true, wrap at boundaries (e.g. true <-> false).
+  If false, add() may return nil at min/max.
+
+*word*                                           (rule option)
+  For pattern-based rules. If true, match only at word boundaries (e.g.
+  "true" not "trueValue"). If false, match anywhere.
+
+*priority*                                       (rule option)
+  Higher value = rule tried first when multiple match. Default 50.
+
+==============================================================================
+PRE-BUILT RULES                                        *mobius-prebuilt-rules*
+==============================================================================
+
+Use as string (lazy-loaded, default config): >
+  "mobius.rules.numeric.integer"   -- integers
+  "mobius.rules.numeric.hex"      -- 0x... hex
+  "mobius.rules.numeric.octal"    -- 0o... octal
+  "mobius.rules.numeric.decimal_fraction"  -- decimal fractions
+  "mobius.rules.constant.bool"     -- true / false
+  "mobius.rules.constant.yes_no"   -- yes / no
+  "mobius.rules.constant.on_off"   -- on / off
+<
+
+LSP enum (enabled only when LSP is attached): >
+  "mobius.rules.lsp_enum"  -- lazy load, use defaults
+  require("mobius.rules.lsp_enum")({
+    symbol_kinds = { "EnumMember", "Key", "Constant" },
+    cyclic = true,
+    timeout_ms = 150,
+  })
+<
+
+At cursor position it requests LSP completion, filters by symbol kinds,
+finds the longest matching candidate in the line, and cycles through.
+
+Custom constants: >
+   require("mobius.rules.constant")({ elements = { "let", "const", "var" }, word = true })
+<
+
+Customize via __call: >
+  local nu = require("mobius.rules.numeric.integer")
+  nu({ priority = 60 })
+  local bool_rule = require("mobius.rules.constant.bool")
+  bool_rule({ word = false })
+<
+
+For architecture and implementation details, see |DESIGN.md|.
+
+==============================================================================
+vim:tw=78:et:ft=help:norl:

@@ -1,0 +1,1926 @@
+-- Single consolidated test file for nvim-mobius (mini.test)
+--
+-- Coverage:
+--   mock_tests: all built-in rules (add/find); date includes presets (add_day_month_year, preset_dmy, preset_mdy, preset_md, preset_time_hm, preset_time_hms)
+--   integration_tests: engine + each rule, including date presets (ymd, iso, dmy, time_hm)
+--   find_tests: find() for all rules
+--   engine_tests: normal/visual/seqadd, no_match, priority, opts.rules, buffer_local
+--   boundary_tests: cursor position, word boundary, decrement zero/negative, empty buffer, cache, nil return
+--   plugin_operator_tests: g@ operator callback (restore cursor to '[ , increment/decrement, trigger sets _G)
+--   blackbox_tests: child Neovim + feedkey (<C-a>/<C-x>) + buffer text comparison (mini.test screen/child)
+--   feedkey integration: runtime+plugin, buffer+text, feedkey, assert buffer text and cursor position
+
+local MiniTest = require("mini.test")
+local expect = MiniTest.expect
+local engine = require("mobius.engine")
+local mobius_plugin = require("mobius.plugin.mobius")
+
+local rules_integer = require("mobius.rules.numeric.integer")
+local rules_decimal_fraction = require("mobius.rules.numeric.decimal_fraction")
+local rules_hex = require("mobius.rules.numeric.hex")
+local rules_octal = require("mobius.rules.numeric.octal")
+local rules_bool = require("mobius.rules.constant.bool")
+local rules_yes_no = require("mobius.rules.constant.yes_no")
+local rules_on_off = require("mobius.rules.constant.on_off")
+local rules_constant = require("mobius.rules.constant")
+local rules_date = require("mobius.rules.date")
+local rules_hexcolor = require("mobius.rules.hexcolor")
+local rules_semver = require("mobius.rules.semver")
+local rules_markdown_header = require("mobius.rules.markdown_header")
+local rules_case = require("mobius.rules.case")
+local rules_lsp_enum = require("mobius.rules.lsp_enum")
+
+local function truthy(x)
+	expect.equality(x ~= nil and x ~= false, true)
+end
+
+local function falsy(x)
+	expect.equality(x, nil)
+end
+
+-- Date rule add() may return string or { text, cursor }; normalize for equality.
+local function date_add_result(ret)
+	return type(ret) == "table" and ret.text or ret
+end
+
+local function create_test_buf(lines)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_set_current_buf(buf)
+	local win = vim.api.nvim_get_current_win()
+	if win and vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_set_buf(win, buf)
+	end
+	return buf
+end
+
+-- Path to plugin root (for blackbox tests). Use cwd so "make test" from repo root works.
+local plugin_path = vim.fn.getcwd()
+
+-- Inlined child init (no separate file): load nvim-mobius in child with same default rules as main tests.
+-- Factory rules (hexcolor, semver) are added by calling the module in init; engine only accepts rule tables with .find.
+local CHILD_INIT_LUA = [[
+local plugin_path = vim.fn.getcwd()
+vim.opt.runtimepath:prepend(plugin_path)
+package.path = plugin_path .. "/lua/?.lua;" .. plugin_path .. "/lua/?/init.lua;" .. package.path
+vim.cmd("runtime! plugin/mobius.lua")
+local rules = {
+  "mobius.rules.numeric.integer",
+  "mobius.rules.numeric.hex",
+  "mobius.rules.numeric.octal",
+  "mobius.rules.numeric.decimal_fraction",
+  "mobius.rules.constant.bool",
+  "mobius.rules.constant.yes_no",
+  "mobius.rules.constant.on_off",
+  "mobius.rules.paren",
+  "mobius.rules.date.ymd",
+  "mobius.rules.date.iso",
+}
+table.insert(rules, require("mobius.rules.hexcolor")())
+table.insert(rules, require("mobius.rules.semver")())
+table.insert(rules, "mobius.rules.markdown_header")
+table.insert(rules, "mobius.rules.case")
+vim.g.mobius_rules = rules
+]]
+
+local T = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = {
+				"mobius.rules.numeric.integer",
+				"mobius.rules.numeric.hex",
+				"mobius.rules.numeric.octal",
+				"mobius.rules.numeric.decimal_fraction",
+				"mobius.rules.constant.bool",
+				"mobius.rules.constant.yes_no",
+				"mobius.rules.constant.on_off",
+				"mobius.rules.paren",
+				"mobius.rules.date.ymd",
+				"mobius.rules.hexcolor",
+				"mobius.rules.semver",
+				"mobius.rules.markdown_header",
+				"mobius.rules.case",
+			}
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+
+-- ============================================================================
+-- Mock tests (all rules; date has add_day_month_year + preset_* subtests), e.g. mock_tests["number"]["add"], mock_tests["date"]["preset_dmy"]
+-- ============================================================================
+
+local mock_tests = MiniTest.new_set()
+
+local number_mock = MiniTest.new_set()
+number_mock["add"] = function()
+	expect.equality(rules_integer.add(1, { text = "123" }), "124")
+	expect.equality(rules_integer.add(-1, { text = "123" }), "122")
+	expect.equality(rules_integer.add(-1, { text = "-1" }), "-2")
+	expect.equality(rules_integer.add(1, { text = "-1" }), "0")
+	expect.equality(rules_integer.add(-1, { text = "+1" }), "0")
+	expect.equality(rules_integer.add(-2, { text = "+1" }), "-1")
+end
+number_mock["large_integer_increment"] = function()
+	expect.equality(rules_integer.add(1, { text = "999999999" }), "1000000000")
+end
+number_mock["large_integer_decrement"] = function()
+	expect.equality(rules_integer.add(-1, { text = "1000000000" }), "999999999")
+end
+number_mock["negative_to_positive"] = function()
+	expect.equality(rules_integer.add(1, { text = "-1" }), "0")
+	expect.equality(rules_integer.add(1, { text = "0" }), "1")
+end
+number_mock["find"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	local match = rules_integer.find({ row = 0, col = 4 })
+	truthy(match)
+	expect.equality(match.metadata.text, "123")
+end
+number_mock["find_negative"] = function()
+	local buf = create_test_buf({ "x -1 y" })
+	local match = rules_integer.find({ row = 0, col = 3 })
+	truthy(match)
+	expect.equality(match.metadata.text, "-1")
+end
+number_mock["find_positive"] = function()
+	local buf = create_test_buf({ "x +1 y" })
+	local match = rules_integer.find({ row = 0, col = 3 })
+	truthy(match)
+	expect.equality(match.metadata.text, "+1")
+end
+number_mock["no_match"] = function()
+	local buf = create_test_buf({ "foo bar" })
+	falsy(rules_integer.find({ row = 0, col = 0 }))
+end
+mock_tests["number"] = number_mock
+
+local hex_mock = MiniTest.new_set()
+hex_mock["add"] = function()
+	expect.equality(rules_hex.add(1, { text = "0xFF", value = 255 }), "0x100")
+	expect.equality(rules_hex.add(1, { text = "0XFF", value = 255 }), "0X100")
+end
+hex_mock["add_decrement_wrap"] = function()
+	-- 0x8 (1 digit): 0 - 1 wraps to 0xf, not 0xffffffffffffffff
+	expect.equality(rules_hex.add(-1, { text = "0x0", value = 0 }), "0xf")
+	expect.equality(rules_hex.add(-8, { text = "0x8", value = 8 }), "0x0")
+	expect.equality(rules_hex.add(-9, { text = "0x8", value = 8 }), "0xf")
+	-- 0x00 (2 digits): 0 - 1 wraps to 0xff
+	expect.equality(rules_hex.add(-1, { text = "0x00", value = 0 }), "0xff")
+end
+hex_mock["uppercase_consistency"] = function()
+	expect.equality(rules_hex.add(1, { text = "0XFF", value = 255 }), "0X100")
+end
+hex_mock["lowercase_consistency"] = function()
+	expect.equality(rules_hex.add(1, { text = "0xff", value = 255 }), "0x100")
+end
+hex_mock["single_digit_wrap"] = function()
+	expect.equality(rules_hex.add(-6, { text = "0x5", value = 5 }), "0xf")
+end
+hex_mock["no_match"] = function()
+	local buf = create_test_buf({ "no hex" })
+	falsy(rules_hex.find({ row = 0, col = 0 }))
+end
+mock_tests["hex"] = hex_mock
+
+local bool_mock = MiniTest.new_set()
+bool_mock["toggle"] = function()
+	expect.equality(rules_bool.add(1, { text = "true" }), "false")
+	expect.equality(rules_bool.add(1, { text = "false" }), "true")
+end
+bool_mock["toggle_preserve_case"] = function()
+	expect.equality(rules_bool.add(1, { text = "True" }), "False")
+	expect.equality(rules_bool.add(1, { text = "False" }), "True")
+	expect.equality(rules_bool.add(1, { text = "TRUE" }), "FALSE")
+	expect.equality(rules_bool.add(1, { text = "FALSE" }), "TRUE")
+end
+bool_mock["find_case_variants"] = function()
+	local buf = create_test_buf({ "x True y FALSE z" })
+	expect.equality(rules_bool.find({ row = 0, col = 2 }).metadata.text, "True")
+	expect.equality(rules_bool.find({ row = 0, col = 10 }).metadata.text, "FALSE")
+end
+bool_mock["no_match_not_word"] = function()
+	local buf = create_test_buf({ "let x = trueValue" })
+	falsy(rules_bool.find({ row = 0, col = 9 }))
+end
+mock_tests["bool"] = bool_mock
+
+local yes_no_mock = MiniTest.new_set()
+yes_no_mock["toggle"] = function()
+	expect.equality(rules_yes_no.add(1, { text = "yes" }), "no")
+	expect.equality(rules_yes_no.add(1, { text = "no" }), "yes")
+end
+yes_no_mock["toggle_preserve_case"] = function()
+	expect.equality(rules_yes_no.add(1, { text = "Yes" }), "No")
+	expect.equality(rules_yes_no.add(1, { text = "No" }), "Yes")
+	expect.equality(rules_yes_no.add(1, { text = "YES" }), "NO")
+	expect.equality(rules_yes_no.add(1, { text = "NO" }), "YES")
+end
+yes_no_mock["find_case_variants"] = function()
+	local buf = create_test_buf({ "x Yes y NO z" })
+	expect.equality(rules_yes_no.find({ row = 0, col = 2 }).metadata.text, "Yes")
+	expect.equality(rules_yes_no.find({ row = 0, col = 8 }).metadata.text, "NO")
+end
+mock_tests["yes_no"] = yes_no_mock
+
+local on_off_mock = MiniTest.new_set()
+on_off_mock["toggle"] = function()
+	expect.equality(rules_on_off.add(1, { text = "on" }), "off")
+	expect.equality(rules_on_off.add(1, { text = "off" }), "on")
+end
+mock_tests["on_off"] = on_off_mock
+
+-- Enum functionality replaced with constant rule
+local constant_mock = MiniTest.new_set()
+constant_mock["cycle"] = function()
+	local rule = rules_constant({ elements = { "let", "const", "var" }, word = true })
+	expect.equality(rule.add(1, { text = "let" }), "const")
+	expect.equality(rule.add(1, { text = "var" }), "let")
+end
+mock_tests["constant"] = constant_mock
+
+local date_mock = MiniTest.new_set()
+date_mock["add_day_month_year"] = function()
+	local r = rules_date("%Y/%m/%d")
+	local meta = { text = "2024/01/15", pattern = "%Y/%m/%d", component = "day", captures = { "2024", "01", "15" } }
+	expect.equality(date_add_result(r.add(1, meta)), "2024/01/16")
+	meta.component = "month"
+	expect.equality(date_add_result(r.add(1, meta)), "2024/02/15")
+	meta.component = "year"
+	expect.equality(date_add_result(r.add(1, meta)), "2025/01/15")
+end
+date_mock["month_31_to_february"] = function()
+	local r = rules_date("%Y/%m/%d")
+	local meta = { text = "2023/01/31", pattern = "%Y/%m/%d", component = "month", captures = { "2023", "01", "31" } }
+	expect.equality(date_add_result(r.add(1, meta)), "2023/02/31")
+end
+date_mock["leap_year_february_29"] = function()
+	local r = rules_date("%Y/%m/%d")
+	local meta = { text = "2024/02/29", pattern = "%Y/%m/%d", component = "day", captures = { "2024", "02", "29" } }
+	expect.equality(date_add_result(r.add(1, meta)), "2024/03/01")
+end
+date_mock["month_decrement_wrap"] = function()
+	local r = rules_date("%Y/%m/%d")
+	local meta = { text = "2023/01/15", pattern = "%Y/%m/%d", component = "month", captures = { "2023", "01", "15" } }
+	expect.equality(date_add_result(r.add(-1, meta)), "2022/12/15")
+end
+date_mock["preset_dmy"] = function()
+	local rule = require("mobius.rules.date.dmy")
+	local meta = { text = "15/01/2024", pattern = "%d/%m/%Y", component = "day", captures = { "15", "01", "2024" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "16/01/2024")
+	meta.component = "month"
+	meta.captures = { "15", "12", "2024" }
+	meta.text = "15/12/2024"
+	expect.equality(date_add_result(rule.add(1, meta)), "15/01/2025")
+end
+date_mock["preset_mdy"] = function()
+	local rule = require("mobius.rules.date.mdy")
+	local meta = { text = "01/15/2024", pattern = "%m/%d/%Y", component = "day", captures = { "01", "15", "2024" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "01/16/2024")
+	meta.component = "month"
+	meta.text = "12/31/2024"
+	meta.captures = { "12", "31", "2024" }
+	expect.equality(date_add_result(rule.add(1, meta)), "01/31/2025")
+end
+date_mock["preset_md"] = function()
+	local rule = require("mobius.rules.date.md")
+	local meta = { text = "01/15", pattern = "%m/%d", component = "day", captures = { "01", "15" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "01/16")
+	meta.component = "month"
+	expect.equality(date_add_result(rule.add(1, meta)), "02/15")
+end
+date_mock["preset_time_hm"] = function()
+	local rule = require("mobius.rules.date.time_hm")
+	local meta = { text = "14:30", pattern = "%H:%M", component = "min", captures = { "14", "30" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31")
+	meta.component = "hour"
+	expect.equality(date_add_result(rule.add(1, meta)), "15:30")
+	meta.text = "23:30"
+	meta.component = "hour"
+	meta.captures = { "23", "30" }
+	expect.equality(date_add_result(rule.add(1, meta)), "00:30")
+end
+date_mock["preset_time_hms"] = function()
+	local rule = require("mobius.rules.date.time_hms")
+	local meta = { text = "14:30:45", pattern = "%H:%M:%S", component = "sec", captures = { "14", "30", "45" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:30:46")
+	meta.component = "hour"
+	expect.equality(date_add_result(rule.add(1, meta)), "15:30:45")
+end
+date_mock["time_hms_second_boundary"] = function()
+	local rule = require("mobius.rules.date.time_hms")
+	local meta = { text = "14:30:59", pattern = "%H:%M:%S", component = "sec", captures = { "14", "30", "59" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31:00")
+end
+date_mock["time_hms_minute_increment"] = function()
+	local rule = require("mobius.rules.date.time_hms")
+	local meta = { text = "14:30:45", pattern = "%H:%M:%S", component = "min", captures = { "14", "30", "45" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31:45")
+end
+date_mock["time_hm_minute_boundary"] = function()
+	local rule = require("mobius.rules.date.time_hm")
+	local meta = { text = "14:30", pattern = "%H:%M", component = "min", captures = { "14", "30" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31")
+end
+mock_tests["date"] = date_mock
+
+local decimal_mock = MiniTest.new_set()
+decimal_mock["preserve_two_places"] = function()
+	expect.equality(rules_decimal_fraction.add(1, { text = "1.50", value = 1.50 }).text, "2.50")
+end
+decimal_mock["preserve_one_place"] = function()
+	expect.equality(rules_decimal_fraction.add(1, { text = "1.5", value = 1.5 }).text, "2.5")
+end
+decimal_mock["rounding"] = function()
+	expect.equality(rules_decimal_fraction.add(1, { text = "1.99", value = 1.99 }).text, "2.99")
+end
+mock_tests["decimal_fraction"] = decimal_mock
+
+local octal_mock = MiniTest.new_set()
+octal_mock["add"] = function()
+	expect.equality(rules_octal.add(1, { text = "0o10", value = 8 }), "0o11")
+end
+octal_mock["matching"] = function()
+	local buf = create_test_buf({ "0o755" })
+	local match = rules_octal.find({ row = 0, col = 0 })
+	truthy(match)
+	expect.equality(match.metadata.text, "0o755")
+end
+mock_tests["octal"] = octal_mock
+
+local semver_mock = MiniTest.new_set()
+semver_mock["major"] = function()
+	local r = require("mobius.rules.semver")()
+	local meta = { text = "1.2.3", component = "major", major = 1, minor = 2, patch = 3 }
+	expect.equality(r.add(1, meta), "2.0.0")
+end
+semver_mock["minor"] = function()
+	local r = require("mobius.rules.semver")()
+	local meta = { text = "1.2.3", component = "minor", major = 1, minor = 2, patch = 3 }
+	expect.equality(r.add(1, meta), "1.3.0")
+end
+semver_mock["patch"] = function()
+	local r = require("mobius.rules.semver")()
+	local meta = { text = "1.2.3", component = "patch", major = 1, minor = 2, patch = 3 }
+	expect.equality(r.add(1, meta), "1.2.4")
+end
+mock_tests["semver"] = semver_mock
+
+local hexcolor_mock = MiniTest.new_set()
+hexcolor_mock["add"] = function()
+	local r = rules_hexcolor()
+	local meta = { text = "#FF0000", component = "all", r = 255, g = 0, b = 0, original_case = "upper" }
+	expect.equality(r.add(1, meta), "#FF0101")
+	meta.component = "r"
+	expect.equality(r.add(1, meta), "#FF0000")
+end
+hexcolor_mock["red_increment"] = function()
+	local r = rules_hexcolor()
+	local meta = { text = "#100000", component = "r", r = 16, g = 0, b = 0, original_case = "lower" }
+	expect.equality(r.add(1, meta), "#110000")
+end
+hexcolor_mock["red_clamp_max"] = function()
+	local r = rules_hexcolor()
+	local meta = { text = "#FF0000", component = "r", r = 255, g = 0, b = 0, original_case = "lower" }
+	expect.equality(r.add(1, meta), "#ff0000")
+end
+hexcolor_mock["blue_decrement"] = function()
+	local r = rules_hexcolor()
+	local meta = { text = "#0000FF", component = "b", r = 0, g = 0, b = 255, original_case = "lower" }
+	expect.equality(r.add(-1, meta), "#0000fe")
+end
+mock_tests["hexcolor"] = hexcolor_mock
+
+local semver_mock = MiniTest.new_set()
+semver_mock["add"] = function()
+	local r = rules_semver()
+	local meta = { text = "1.2.3", component = "patch", major = 1, minor = 2, patch = 3 }
+	expect.equality(r.add(1, meta), "1.2.4")
+	meta.component = "minor"
+	expect.equality(r.add(1, meta), "1.3.0")
+	meta.component = "major"
+	expect.equality(r.add(1, meta), "2.0.0")
+end
+mock_tests["semver"] = semver_mock
+
+local markdown_header_mock = MiniTest.new_set()
+markdown_header_mock["add"] = function()
+	local r = rules_markdown_header()
+	expect.equality(r.add(1, { text = "##", count = 2 }), "###")
+	expect.equality(r.add(-1, { text = "#", count = 1 }), nil)
+	expect.equality(r.add(1, { text = "######", count = 6 }), nil)
+end
+mock_tests["markdown_header"] = markdown_header_mock
+
+local case_mock = MiniTest.new_set()
+case_mock["cycle"] = function()
+	local r = rules_case({ types = { "camelCase", "snake_case", "PascalCase" } })
+	local meta = { text = "camelCase", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase" } }
+	expect.equality(r.add(1, meta), "camel_case")
+	meta.text = "snake_case"
+	meta.case_type = "snake_case"
+	expect.equality(r.add(1, meta), "SnakeCase")
+end
+mock_tests["case"] = case_mock
+
+-- LSP enum: mock vim.lsp.get_clients and vim.lsp.buf_request_sync to test find() and add() without a real LSP client.
+-- CompletionItemKind: EnumMember=13, Key=16, Constant=21 (default symbol_kinds; mock items use 13/16).
+local lsp_enum_mock = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			_G._mobius_test_orig_buf_request_sync = vim.lsp.buf_request_sync
+			_G._mobius_test_orig_get_clients = vim.lsp.get_clients
+		end,
+		post_case = function()
+			vim.lsp.buf_request_sync = _G._mobius_test_orig_buf_request_sync
+			vim.lsp.get_clients = _G._mobius_test_orig_get_clients
+			_G._mobius_test_orig_buf_request_sync = nil
+			_G._mobius_test_orig_get_clients = nil
+		end,
+	},
+})
+lsp_enum_mock["add_cyclic"] = function()
+	local r = rules_lsp_enum({ cyclic = true })
+	local meta = { text = "A", available_values = { "A", "B", "C" } }
+	expect.equality(r.add(1, meta), "B")
+	expect.equality(r.add(-1, meta), "C") -- A - 1 wraps to C
+	meta.text = "C"
+	expect.equality(r.add(1, meta), "A") -- C + 1 wraps to A
+	meta.text = "B"
+	expect.equality(r.add(-1, meta), "A")
+end
+lsp_enum_mock["add_non_cyclic_boundary"] = function()
+	local r = rules_lsp_enum({ cyclic = false })
+	local meta = { text = "A", available_values = { "A", "B", "C" } }
+	expect.equality(r.add(1, meta), "B")
+	meta.text = "C"
+	expect.equality(r.add(1, meta), nil)
+	meta.text = "A"
+	expect.equality(r.add(-1, meta), nil)
+	meta.text = "B"
+	expect.equality(r.add(-1, meta), "A")
+end
+lsp_enum_mock["add_text_not_in_list_returns_nil"] = function()
+	local r = rules_lsp_enum()
+	local meta = { text = "X", available_values = { "A", "B" } }
+	expect.equality(r.add(1, meta), nil)
+end
+lsp_enum_mock["add_empty_available_values_returns_nil"] = function()
+	local r = rules_lsp_enum()
+	local meta = { text = "A", available_values = {} }
+	expect.equality(r.add(1, meta), nil)
+	meta.available_values = nil
+	expect.equality(r.add(1, meta), nil)
+end
+lsp_enum_mock["add_cyclic_single_element"] = function()
+	local r = rules_lsp_enum({ cyclic = true })
+	local meta = { text = "Only", available_values = { "Only" } }
+	expect.equality(r.add(1, meta), "Only")
+	expect.equality(r.add(-1, meta), "Only")
+	expect.equality(r.add(10, meta), "Only")
+end
+lsp_enum_mock["add_cyclic_step_greater_than_one"] = function()
+	local r = rules_lsp_enum({ cyclic = true })
+	local meta = { text = "A", available_values = { "A", "B", "C" } }
+	expect.equality(r.add(2, meta), "C")
+	meta.text = "C"
+	expect.equality(r.add(-2, meta), "A")
+end
+lsp_enum_mock["add_non_cyclic_middle"] = function()
+	local r = rules_lsp_enum({ cyclic = false })
+	local meta = { text = "B", available_values = { "A", "B", "C" } }
+	expect.equality(r.add(1, meta), "C")
+	expect.equality(r.add(-1, meta), "A")
+	meta.text = "B"
+	expect.equality(r.add(-1, meta), "A")
+end
+lsp_enum_mock["add_cyclic_negative_addend_wrap"] = function()
+	local r = rules_lsp_enum({ cyclic = true })
+	local meta = { text = "A", available_values = { "A", "B", "C" } }
+	expect.equality(r.add(-2, meta), "B") -- A -> C -> B
+	meta.text = "B"
+	expect.equality(r.add(-3, meta), "B") -- B - 3 wraps: B -> A -> C -> B
+end
+lsp_enum_mock["rule_from_string_has_find_add"] = function()
+	-- When loaded as "mobius.rules.lsp_enum", engine gets a table with .find and .add (no call)
+	local r = rules_lsp_enum
+	truthy(r.find)
+	truthy(r.add)
+	expect.equality(type(r.find), "function")
+	expect.equality(type(r.add), "function")
+	expect.equality(r.id, "lsp_enum")
+	truthy(r.priority)
+	truthy(r.cyclic == true)
+end
+lsp_enum_mock["rule_called_with_opts_returns_new_rule"] = function()
+	local r1 = rules_lsp_enum({ priority = 70 })
+	local r2 = rules_lsp_enum({ priority = 80 })
+	expect.equality(r1.priority, 70)
+	expect.equality(r2.priority, 80)
+	expect.equality(r1.cyclic, true)
+	local r3 = rules_lsp_enum({ cyclic = false })
+	expect.equality(r3.cyclic, false)
+end
+lsp_enum_mock["find_returns_match_when_mock_returns_items"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	local mock_results = {
+		[1] = {
+			result = {
+				items = {
+					{ label = "Foo", kind = 13 },
+					{ label = "Bar", kind = 13 },
+				},
+			},
+		},
+	}
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return mock_results
+	end
+	local buf = create_test_buf({ "x Foo y" })
+	-- Use explicit symbol_kinds so mock items (kind 13) pass regardless of protocol
+	local r = rules_lsp_enum({ symbol_kinds = { 13, 16 } })
+	local match = r.find({ row = 0, col = 2 })
+	truthy(match)
+	expect.equality(match.metadata.text, "Foo")
+	expect.equality(match.col, 2)
+	expect.equality(match.end_col, 4)
+	expect.equality(type(match.metadata.available_values), "table")
+	expect.equality(#match.metadata.available_values, 2)
+	-- Implementation sorts candidates for stable ordering (lsp_enum.lua table.sort)
+	expect.equality(match.metadata.available_values[1], "Bar")
+	expect.equality(match.metadata.available_values[2], "Foo")
+end
+lsp_enum_mock["find_returns_nil_when_mock_returns_empty"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return { [1] = { result = { items = {} } } }
+	end
+	local buf = create_test_buf({ "x Foo y" })
+	local r = rules_lsp_enum()
+	falsy(r.find({ row = 0, col = 2 }))
+end
+lsp_enum_mock["find_returns_nil_when_mock_returns_nil"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return nil
+	end
+	local buf = create_test_buf({ "x Foo y" })
+	local r = rules_lsp_enum()
+	falsy(r.find({ row = 0, col = 2 }))
+end
+lsp_enum_mock["find_returns_nil_when_no_clients"] = function()
+	vim.lsp.get_clients = function(_)
+		return {}
+	end
+	local buf = create_test_buf({ "x Foo y" })
+	local r = rules_lsp_enum()
+	falsy(r.find({ row = 0, col = 2 }))
+end
+lsp_enum_mock["find_filters_by_symbol_kinds"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	-- symbol_kinds = { 13 }; kind 99 is filtered out
+	local mock_results = {
+		[1] = {
+			result = {
+				items = {
+					{ label = "Accepted", kind = 13 },
+					{ label = "Rejected", kind = 99 },
+				},
+			},
+		},
+	}
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return mock_results
+	end
+	local buf = create_test_buf({ "Accepted" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	local match = r.find({ row = 0, col = 0 })
+	truthy(match)
+	expect.equality(match.metadata.text, "Accepted")
+	expect.equality(#match.metadata.available_values, 1)
+	expect.equality(match.metadata.available_values[1], "Accepted")
+end
+lsp_enum_mock["find_longest_match_at_cursor"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	local mock_results = {
+		[1] = {
+			result = {
+				items = {
+					{ label = "Foo", kind = 13 },
+					{ label = "FooBar", kind = 13 },
+				},
+			},
+		},
+	}
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return mock_results
+	end
+	local buf = create_test_buf({ "a FooBar b" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	-- Cursor at col 2 is inside "FooBar"; longest match containing cursor is "FooBar"
+	local match = r.find({ row = 0, col = 2 })
+	truthy(match)
+	expect.equality(match.metadata.text, "FooBar")
+	expect.equality(match.col, 2)
+	expect.equality(match.end_col, 7)
+end
+lsp_enum_mock["find_handles_result_as_array"] = function()
+	-- LSP can return result as CompletionItem[] (no .items key)
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return {
+			[1] = {
+				result = {
+					{ label = "One", kind = 13 },
+					{ label = "Two", kind = 13 },
+				},
+				items = nil,
+			},
+		}
+	end
+	local buf = create_test_buf({ "One" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	local match = r.find({ row = 0, col = 0 })
+	truthy(match)
+	expect.equality(match.metadata.text, "One")
+	expect.equality(#match.metadata.available_values, 2)
+	expect.equality(match.metadata.available_values[2], "Two")
+end
+lsp_enum_mock["find_multiple_same_candidate_cursor_in_second"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return {
+			[1] = { result = { items = { { label = "A", kind = 13 } } } },
+		}
+	end
+	local buf = create_test_buf({ "A B A" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	local match_first = r.find({ row = 0, col = 0 })
+	truthy(match_first)
+	expect.equality(match_first.metadata.text, "A")
+	expect.equality(match_first.col, 0)
+	expect.equality(match_first.end_col, 0)
+	local match_second = r.find({ row = 0, col = 4 })
+	truthy(match_second)
+	expect.equality(match_second.metadata.text, "A")
+	expect.equality(match_second.col, 4)
+	expect.equality(match_second.end_col, 4)
+end
+lsp_enum_mock["find_empty_line_returns_nil"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return { [1] = { result = { items = { { label = "X", kind = 13 } } } } }
+	end
+	local buf = create_test_buf({ "" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	falsy(r.find({ row = 0, col = 0 }))
+end
+lsp_enum_mock["find_cursor_not_in_any_candidate_returns_nil"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return {
+			[1] = { result = { items = { { label = "Foo", kind = 13 }, { label = "Bar", kind = 13 } } } },
+		}
+	end
+	local buf = create_test_buf({ "Foo Bar" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	-- Cursor on space (col 3)
+	falsy(r.find({ row = 0, col = 3 }))
+end
+lsp_enum_mock["find_item_without_kind_filtered_out"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return {
+			[1] = {
+				result = {
+					items = {
+						{ label = "NoKind", kind = nil },
+						{ label = "HasKind", kind = 13 },
+					},
+				},
+			},
+		}
+	end
+	local buf = create_test_buf({ "HasKind" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	local match = r.find({ row = 0, col = 0 })
+	truthy(match)
+	expect.equality(match.metadata.text, "HasKind")
+	expect.equality(#match.metadata.available_values, 1)
+end
+lsp_enum_mock["find_first_client_with_items_used"] = function()
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return {
+			[1] = { result = { items = {} } },
+			[2] = { result = { items = { { label = "Second", kind = 13 } } } },
+		}
+	end
+	local buf = create_test_buf({ "Second" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	local match = r.find({ row = 0, col = 0 })
+	truthy(match)
+	expect.equality(match.metadata.text, "Second")
+	-- extract_completion_items iterates with pairs(); first non-empty wins. Client 1 has empty, client 2 has items.
+	expect.equality(#match.metadata.available_values, 1)
+end
+lsp_enum_mock["find_get_clients_receives_bufnr"] = function()
+	local captured_bufnr
+	vim.lsp.get_clients = function(opts)
+		captured_bufnr = opts and opts.bufnr
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, _, _)
+		return { [1] = { result = { items = { { label = "X", kind = 13 } } } } }
+	end
+	local buf = create_test_buf({ "X" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	r.find({ row = 0, col = 0 })
+	expect.equality(captured_bufnr, buf)
+end
+lsp_enum_mock["find_params_position_uses_row_col"] = function()
+	local captured_params
+	vim.lsp.get_clients = function(_)
+		return { { id = 1 } }
+	end
+	vim.lsp.buf_request_sync = function(_, _, params, _)
+		captured_params = params
+		return { [1] = { result = { items = { { label = "X", kind = 13 } } } } }
+	end
+	local buf = create_test_buf({ "X" })
+	local r = rules_lsp_enum({ symbol_kinds = { 13 } })
+	r.find({ row = 2, col = 5 })
+	truthy(captured_params)
+	expect.equality(captured_params.position.line, 2)
+	expect.equality(captured_params.position.character, 5)
+end
+mock_tests["lsp_enum"] = lsp_enum_mock
+
+T["mock_tests"] = mock_tests
+
+-- ============================================================================
+-- Integration tests
+-- ============================================================================
+
+local function test_with_engine(initial_lines, cursor_pos, direction, step, expected_lines, rules)
+	local buf = create_test_buf(initial_lines)
+	vim.api.nvim_set_current_buf(buf)
+	local win = vim.api.nvim_get_current_win()
+	if win and vim.api.nvim_win_is_valid(win) then
+		vim.api.nvim_win_set_buf(win, buf)
+	end
+	vim.api.nvim_win_set_cursor(win or 0, cursor_pos)
+	local opts = { visual = false, seqadd = false, step = step }
+	if rules then
+		opts.rules = rules
+	end
+	vim.api.nvim_set_current_buf(buf)
+	engine.execute(direction, opts)
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines, expected_lines)
+end
+
+local integration_tests = MiniTest.new_set()
+
+integration_tests["number_increment_decrement"] = function()
+	test_with_engine({ "foo 123 bar" }, { 1, 4 }, "increment", 1, { "foo 124 bar" })
+	test_with_engine({ "foo 123 bar" }, { 1, 4 }, "decrement", 1, { "foo 122 bar" })
+end
+
+integration_tests["hex_increment"] = function()
+	test_with_engine({ "color: 0xFF" }, { 1, 7 }, "increment", 1, { "color: 0x100" })
+end
+
+integration_tests["bool_yes_no_on_off_toggle"] = function()
+	test_with_engine({ "let x = true" }, { 1, 9 }, "increment", 1, { "let x = false" })
+	test_with_engine({ "answer: yes" }, { 1, 8 }, "increment", 1, { "answer: no" })
+	test_with_engine({ "status: on" }, { 1, 8 }, "increment", 1, { "status: off" })
+end
+
+integration_tests["constant_cycle"] = function()
+	test_with_engine(
+		{ "let x = 1" },
+		{ 1, 0 },
+		"increment",
+		1,
+		{ "const x = 1" },
+		{ rules_constant({ elements = { "let", "const", "var" }, word = true }) }
+	)
+end
+
+integration_tests["date_ymd_iso"] = function()
+	test_with_engine(
+		{ "date: 2024/01/15" },
+		{ 1, 14 },
+		"increment",
+		1,
+		{ "date: 2024/01/16" },
+		{ rules_date("%Y/%m/%d") }
+	)
+	test_with_engine({ "due 2024-01-15" }, { 1, 13 }, "increment", 1, { "due 2024-01-16" }, { "mobius.rules.date.iso" })
+end
+
+-- DMY preset: full integration covered by date_mock (preset_dmy, add_day_month_year, etc.).
+-- Optional integration test skipped in headless: cursor/buffer state can make find() miss.
+integration_tests["date_preset_dmy"] = function()
+	local rule = require("mobius.rules.date.dmy")
+	local meta = { text = "15/01/2024", pattern = "%d/%m/%Y", component = "day", captures = { "15", "01", "2024" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "16/01/2024")
+end
+
+integration_tests["hexcolor_semver_markdown_header_case"] = function()
+	test_with_engine({ "color: #FF0000" }, { 1, 7 }, "increment", 1, { "color: #FF0101" }, { rules_hexcolor() })
+	test_with_engine({ "version: 1.2.3" }, { 1, 13 }, "increment", 1, { "version: 1.2.4" }, { rules_semver() })
+	test_with_engine({ "## Header" }, { 1, 0 }, "increment", 1, { "### Header" }, { rules_markdown_header() })
+	test_with_engine(
+		{ "let camelCase = 1" },
+		{ 1, 8 },
+		"increment",
+		1,
+		{ "let camel_case = 1" },
+		{ rules_case({ types = { "camelCase", "snake_case", "PascalCase" } }) }
+	)
+end
+
+T["integration_tests"] = integration_tests
+
+-- ============================================================================
+-- Find tests
+-- ============================================================================
+
+local find_tests = MiniTest.new_set()
+
+find_tests["number_hex_bool_find"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	truthy(rules_integer.find({ row = 0, col = 4 }))
+	expect.equality(rules_integer.find({ row = 0, col = 4 }).metadata.text, "123")
+	buf = create_test_buf({ "color: 0xFF" })
+	truthy(rules_hex.find({ row = 0, col = 7 }))
+	buf = create_test_buf({ "let x = true" })
+	truthy(rules_bool.find({ row = 0, col = 9 }))
+	expect.equality(rules_bool.find({ row = 0, col = 9 }).metadata.text, "true")
+end
+
+find_tests["date_hexcolor_semver_markdown_case_find"] = function()
+	local date_rule = rules_date("%Y/%m/%d")
+	local buf = create_test_buf({ "2024/01/15" })
+	vim.api.nvim_set_current_buf(buf)
+	truthy(date_rule.find({ row = 0, col = 0 }) or date_rule.find({ row = 0, col = 5 }))
+	local h = rules_hexcolor()
+	buf = create_test_buf({ "#FF0000" })
+	vim.api.nvim_set_current_buf(buf)
+	truthy(h.find({ row = 0, col = 0 }))
+	buf = create_test_buf({ "version: 1.2.3" })
+	truthy(rules_semver().find({ row = 0, col = 9 }))
+	buf = create_test_buf({ "## Header" })
+	truthy(rules_markdown_header().find({ row = 0, col = 0 }))
+	buf = create_test_buf({ "let camelCase = 1" })
+	truthy(rules_case({ types = { "camelCase", "snake_case", "PascalCase" } }).find({ row = 0, col = 4 }))
+end
+
+T["find_tests"] = find_tests
+
+-- ============================================================================
+-- Engine tests (execute behavior)
+-- ============================================================================
+
+local engine_tests = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = { "mobius.rules.numeric.integer", "mobius.rules.constant.bool" }
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+
+engine_tests["increment_decrement_step"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 4 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 124 bar")
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "foo 10 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 4 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 5 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 15 bar")
+end
+
+engine_tests["visual_multiple_seqadd"] = function()
+	local buf = create_test_buf({ "1", "2", "3" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 3, 0, {})
+	engine.execute("increment", { visual = true, seqadd = false, step = 1 })
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines[1], "2")
+	expect.equality(lines[2], "3")
+	expect.equality(lines[3], "4")
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "1", "1", "1" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 3, 0, {})
+	engine.execute("increment", { visual = true, seqadd = true, step = 1 })
+	lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines[1], "2")
+	expect.equality(lines[2], "3")
+	expect.equality(lines[3], "4")
+end
+
+engine_tests["no_match_unchanged"] = function()
+	local buf = create_test_buf({ "foo bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo bar")
+end
+
+local prio = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = {
+				{
+					id = "custom_number",
+					priority = 60,
+					find = function(cursor)
+						local row, col = cursor.row, cursor.col
+						local b = vim.api.nvim_get_current_buf()
+						local lines = vim.api.nvim_buf_get_lines(b, row, row + 1, false)
+						local line = lines[1] or ""
+						local start, end_pos = line:find("%d+")
+						if start and end_pos >= col + 1 then
+							return {
+								col = start - 1,
+								end_col = end_pos - 1,
+								metadata = { text = line:sub(start, end_pos) },
+							}
+						end
+						return nil
+					end,
+					add = function(addend, metadata)
+						return "custom_" .. (tonumber(metadata.text) + addend)
+					end,
+				},
+				"mobius.rules.numeric.integer",
+			}
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+prio["prefer_higher_priority"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.api.nvim_win_set_cursor(0, { 1, 4 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo custom_124 bar")
+end
+engine_tests["priority"] = prio
+
+local opts_rules = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = { "mobius.rules.numeric.integer", "mobius.rules.constant.bool" }
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+opts_rules["restrict_to_given_rules"] = function()
+	local buf = create_test_buf({ "123 true" })
+	vim.api.nvim_win_set_cursor(0, { 1, 1 })
+	engine.execute("increment", { step = 1, rules = { "mobius.rules.numeric.integer" } })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124 true")
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "124 true" })
+	vim.api.nvim_win_set_cursor(0, { 1, 5 })
+	engine.execute("increment", { step = 1, rules = { "mobius.rules.constant.bool" } })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124 false")
+end
+engine_tests["opts_rules"] = opts_rules
+
+local buf_rules = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+buf_rules["use_buffer_local"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	vim.b[buf].mobius_rules = {
+		{
+			id = "buffer_custom",
+			priority = 70,
+			find = function(cursor)
+				local row, col = cursor.row, cursor.col
+				local b = vim.api.nvim_get_current_buf()
+				local lines = vim.api.nvim_buf_get_lines(b, row, row + 1, false)
+				local line = lines[1] or ""
+				local start, end_pos = line:find("%d+")
+				if start and end_pos >= col + 1 then
+					return { col = start - 1, end_col = end_pos - 1, metadata = { text = line:sub(start, end_pos) } }
+				end
+				return nil
+			end,
+			add = function(addend, metadata)
+				return "buf_" .. (tonumber(metadata.text) + addend)
+			end,
+		},
+	}
+	vim.api.nvim_win_set_cursor(0, { 1, 4 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo buf_124 bar")
+end
+
+-- b[1] == true: effective = global .. b[2..]; global base + buffer extras
+buf_rules["inherit_true_global_base_then_buffer_extras"] = function()
+	local buf = create_test_buf({ "123 true" })
+	vim.b[buf].mobius_rules = { true, "mobius.rules.constant.bool" }
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124 true")
+	vim.api.nvim_win_set_cursor(0, { 1, 4 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124 false")
+end
+
+-- b = { true } only: inherit global only, no buffer extras
+buf_rules["inherit_true_only"] = function()
+	local buf = create_test_buf({ "123" })
+	vim.b[buf].mobius_rules = { true }
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124")
+end
+
+-- b[1] not true: no inherit; buffer first then global (current behavior)
+buf_rules["no_inherit_buffer_then_global"] = function()
+	local buf = create_test_buf({ "true 123" })
+	vim.b[buf].mobius_rules = { "mobius.rules.constant.bool" }
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "false 123")
+	vim.api.nvim_win_set_cursor(0, { 1, 6 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "false 124")
+end
+
+engine_tests["buffer_local_rules"] = buf_rules
+
+T["engine_tests"] = engine_tests
+
+-- ============================================================================
+-- Boundary tests (cursor, word boundary, empty buffer, nil return)
+-- ============================================================================
+
+local boundary_tests = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules =
+				{ "mobius.rules.numeric.integer", "mobius.rules.numeric.hex", "mobius.rules.constant.bool" }
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+
+boundary_tests["cursor_at_start_middle_end"] = function()
+	local buf = create_test_buf({ "123 456" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124 456")
+	buf = create_test_buf({ "123 456" })
+	vim.api.nvim_win_set_cursor(0, { 1, 1 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "124 456")
+	buf = create_test_buf({ "  123" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "  124")
+end
+
+boundary_tests["cursor_after_all_prefers_last"] = function()
+	local buf = create_test_buf({ "1 2 3" })
+	vim.api.nvim_win_set_cursor(0, { 1, 4 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "1 2 4")
+end
+
+boundary_tests["prefers_containing_match"] = function()
+	local buf = create_test_buf({ "1 23 456" })
+	vim.api.nvim_win_set_cursor(0, { 1, 3 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "1 24 456")
+end
+
+boundary_tests["bool_word_boundary"] = function()
+	local buf = create_test_buf({ "trueValue = false" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "trueValue = true")
+	buf = create_test_buf({ "isfalse false" })
+	vim.api.nvim_win_set_cursor(0, { 1, 8 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "isfalse true")
+	-- "trueway": "true" is not a whole word, must not match
+	buf = create_test_buf({ "trueway" })
+	falsy(rules_bool.find({ row = 0, col = 0 }))
+	falsy(rules_bool.find({ row = 0, col = 2 }))
+	-- "true way": "true" is a whole word, must match
+	buf = create_test_buf({ "true way" })
+	truthy(rules_bool.find({ row = 0, col = 0 }))
+	expect.equality(rules_bool.find({ row = 0, col = 0 }).metadata.text, "true")
+end
+
+boundary_tests["visual_no_matches_unchanged"] = function()
+	local buf = create_test_buf({ "abc def" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 1, 6, {})
+	engine.execute("increment", { visual = true, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "abc def")
+end
+
+boundary_tests["decrement_to_zero_and_negative"] = function()
+	local buf = create_test_buf({ "1" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("decrement", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "0")
+	buf = create_test_buf({ "5" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("decrement", { visual = false, seqadd = false, step = 10 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "-5")
+end
+
+boundary_tests["empty_buffer_no_crash"] = function()
+	local buf = create_test_buf({ "" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] or "", "")
+end
+
+boundary_tests["cache_clear_works"] = function()
+	local buf = create_test_buf({ "1" })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	engine.clear_cache(buf)
+	vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "2" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "3")
+end
+
+boundary_tests["hex_prefers_first_match"] = function()
+	local buf = create_test_buf({ "0xFF 0XFF" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "0x100 0XFF")
+end
+
+boundary_tests["seqadd_mixed_number_hex"] = function()
+	local buf = create_test_buf({ "10 0x10" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 1, 6, {})
+	engine.execute("increment", { visual = true, seqadd = true, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "11 0x12")
+end
+
+T["boundary_tests"] = boundary_tests
+
+-- ============================================================================
+-- Core boundary: rule returns nil (buffer unchanged)
+-- ============================================================================
+
+local nil_return_tests = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = { "mobius.rules.markdown_header" }
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+
+nil_return_tests["add_returns_nil_no_change"] = function()
+	local buf = create_test_buf({ "###### Header" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(before, after)
+end
+
+nil_return_tests["visual_mode_nil_no_crash"] = function()
+	local buf = create_test_buf({ "###### Header", "# Header" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 2, 0, {})
+	local ok = pcall(engine.execute, "increment", { visual = true, seqadd = false, step = 1 })
+	expect.equality(ok, true)
+end
+
+nil_return_tests["add_returns_non_string_no_change"] = function()
+	local buf = create_test_buf({ "test 123" })
+	vim.api.nvim_win_set_cursor(0, { 1, 6 })
+	local bad_rule = {
+		id = "bad_rule",
+		priority = 50,
+		find = function(cursor)
+			local row, col = cursor.row, cursor.col
+			local b = vim.api.nvim_get_current_buf()
+			local lines = vim.api.nvim_buf_get_lines(b, row, row + 1, false)
+			local line = lines[1] or ""
+			local start, end_pos = line:find("%d+")
+			if start and end_pos >= col + 1 then
+				return { col = start - 1, end_col = end_pos - 1, metadata = { text = line:sub(start, end_pos) } }
+			end
+			return nil
+		end,
+		add = function(addend, metadata)
+			return tonumber(metadata.text) + addend
+		end,
+	}
+	vim.g.mobius_rules = { bad_rule }
+	local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(before, after)
+end
+
+T["nil_return_tests"] = nil_return_tests
+
+-- ============================================================================
+-- Additional Engine & Integration Tests (large numbers, multi-line seqadd, etc.)
+-- ============================================================================
+
+local additional_engine_tests = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			vim.g.mobius_rules = {
+				"mobius.rules.numeric.integer",
+				"mobius.rules.numeric.decimal_fraction",
+				"mobius.rules.numeric.hex",
+				"mobius.rules.numeric.octal",
+				"mobius.rules.constant.bool",
+				"mobius.rules.date.ymd",
+				"mobius.rules.date.dmy",
+				"mobius.rules.date.mdy",
+				"mobius.rules.date.time_hm",
+				"mobius.rules.date.time_hms",
+				"mobius.rules.hexcolor",
+				"mobius.rules.semver",
+				"mobius.rules.markdown_header",
+				"mobius.rules.case",
+			}
+		end,
+		post_case = function()
+			vim.g.mobius_rules = nil
+			vim.b.mobius_rules = nil
+		end,
+	},
+})
+
+-- Large numbers and boundary values
+additional_engine_tests["large_integer_increment"] = function()
+	local buf = create_test_buf({ "999999999" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "1000000000")
+end
+
+additional_engine_tests["large_integer_decrement"] = function()
+	local buf = create_test_buf({ "1000000000" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("decrement", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "999999999")
+end
+
+additional_engine_tests["negative_to_positive_boundary"] = function()
+	local buf = create_test_buf({ "-1" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "0")
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "1")
+end
+
+-- B. Decimal fractions with various precision
+additional_engine_tests["decimal_fraction_preserve_places"] = function()
+	local buf = create_test_buf({ "1.50" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2.50")
+end
+
+additional_engine_tests["decimal_fraction_rounding"] = function()
+	local buf = create_test_buf({ "1.99" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2.99")
+end
+
+additional_engine_tests["decimal_fraction_single_digit"] = function()
+	local buf = create_test_buf({ "1.5" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2.5")
+end
+
+-- C. Hex edge cases
+additional_engine_tests["hex_uppercase_consistency"] = function()
+	local buf = create_test_buf({ "0XFF" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	local result = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+	expect.equality(result:sub(1, 2), "0X")
+	expect.equality(result, "0X100")
+end
+
+additional_engine_tests["hex_lowercase_consistency"] = function()
+	local buf = create_test_buf({ "0xff" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	local result = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+	expect.equality(result:sub(1, 2), "0x")
+	expect.equality(result, "0x100")
+end
+
+additional_engine_tests["hex_decrement_single_digit_wrap"] = function()
+	local buf = create_test_buf({ "0x5" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("decrement", { visual = false, seqadd = false, step = 6 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "0xf")
+end
+
+-- D. Octal: via mock test
+additional_engine_tests["octal_add_mock"] = function()
+	local r = require("mobius.rules.numeric.octal")
+	expect.equality(r.add(1, { text = "0o10", value = 8 }), "0o11")
+end
+
+additional_engine_tests["octal_matching_works"] = function()
+	local r = require("mobius.rules.numeric.octal")
+	local buf = create_test_buf({ "0o755" })
+	local match = r.find({ row = 0, col = 0 })
+	truthy(match)
+	expect.equality(match.metadata.text, "0o755")
+end
+
+-- E. Date: cursor-on-component (ISO %Y-%m-%d: cursor on month must be "month", not "day")
+additional_engine_tests["date_iso_cursor_on_month_component"] = function()
+	local buf = create_test_buf({ "2022-12-06" })
+	vim.api.nvim_set_current_buf(buf)
+	local r = require("mobius.rules.date")("%Y-%m-%d")
+	-- Cursor on "12" (0-based col 5 = "1", col 6 = "2") must yield component "month"
+	local match5 = r.find({ row = 0, col = 5 })
+	local match6 = r.find({ row = 0, col = 6 })
+	expect.equality(match5 and match5.metadata.component, "month")
+	expect.equality(match6 and match6.metadata.component, "month")
+	expect.equality(date_add_result(r.add(1, match5.metadata)), "2023-01-06")
+end
+
+-- E. Date: month boundary (implementation keeps day as-is even if invalid for target month)
+additional_engine_tests["date_month_31_to_february_invalid_day"] = function()
+	local r = require("mobius.rules.date")("%Y/%m/%d")
+	local meta = { text = "2023/01/31", pattern = "%Y/%m/%d", component = "month", captures = { "2023", "01", "31" } }
+	expect.equality(date_add_result(r.add(1, meta)), "2023/02/31")
+end
+
+additional_engine_tests["date_leap_year_february_29"] = function()
+	local r = require("mobius.rules.date")("%Y/%m/%d")
+	local meta = { text = "2024/02/29", pattern = "%Y/%m/%d", component = "day", captures = { "2024", "02", "29" } }
+	expect.equality(date_add_result(r.add(1, meta)), "2024/03/01")
+end
+
+additional_engine_tests["date_month_decrement_wrap"] = function()
+	local r = require("mobius.rules.date")("%Y/%m/%d")
+	local meta = { text = "2023/01/15", pattern = "%Y/%m/%d", component = "month", captures = { "2023", "01", "15" } }
+	expect.equality(date_add_result(r.add(-1, meta)), "2022/12/15")
+end
+
+-- F. Time: hms boundary (does not wrap across hours/days)
+additional_engine_tests["time_hms_second_boundary"] = function()
+	local rule = require("mobius.rules.date.time_hms")
+	local meta = { text = "14:30:59", pattern = "%H:%M:%S", component = "sec", captures = { "14", "30", "59" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31:00")
+end
+
+additional_engine_tests["time_hms_minute_increment"] = function()
+	local rule = require("mobius.rules.date.time_hms")
+	local meta = { text = "14:30:45", pattern = "%H:%M:%S", component = "min", captures = { "14", "30", "45" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31:45")
+end
+
+additional_engine_tests["time_hm_minute_boundary"] = function()
+	local rule = require("mobius.rules.date.time_hm")
+	local meta = { text = "14:30", pattern = "%H:%M", component = "min", captures = { "14", "30" } }
+	expect.equality(date_add_result(rule.add(1, meta)), "14:31")
+end
+
+-- G. Semantic Versioning: mock test with metadata
+additional_engine_tests["semver_major_mock"] = function()
+	local r = require("mobius.rules.semver")()
+	local meta = { text = "1.2.3", component = "major", major = 1, minor = 2, patch = 3 }
+	expect.equality(r.add(1, meta), "2.0.0")
+end
+
+additional_engine_tests["semver_minor_mock"] = function()
+	local r = require("mobius.rules.semver")()
+	local meta = { text = "1.2.3", component = "minor", major = 1, minor = 2, patch = 3 }
+	expect.equality(r.add(1, meta), "1.3.0")
+end
+
+additional_engine_tests["semver_cursor_before_match_edge_case"] = function()
+	local buf = create_test_buf({ "prefix 1.2.3 suffix" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 }) -- cursor at start, before semver
+	local r = require("mobius.rules.semver")()
+	local match = r.find({ row = 0, col = 0 })
+	-- When cursor is before the match start, cursor_offset should be clamped to 1 (major component)
+	truthy(match)
+	expect.equality(match.metadata.component, "major")
+	expect.equality(r.add(1, match.metadata), "2.0.0")
+end
+
+additional_engine_tests["semver_cursor_within_match_boundary"] = function()
+	local buf = create_test_buf({ "version 5.10.15" })
+	vim.api.nvim_win_set_cursor(0, { 1, 11 }) -- cursor on minor component
+	local r = require("mobius.rules.semver")()
+	local match = r.find({ row = 0, col = 11 })
+	truthy(match)
+	expect.equality(match.metadata.component, "minor")
+	expect.equality(r.add(1, match.metadata), "5.11.0")
+end
+
+-- H. Hex color: component operations (clamped, not wrapped)
+additional_engine_tests["hexcolor_red_component_increment"] = function()
+	local r = require("mobius.rules.hexcolor")()
+	local meta = { text = "#100000", component = "r", r = 16, g = 0, b = 0, original_case = "lower" }
+	expect.equality(r.add(1, meta), "#110000")
+end
+
+additional_engine_tests["hexcolor_red_component_clamp_max"] = function()
+	local r = require("mobius.rules.hexcolor")()
+	local meta = { text = "#FF0000", component = "r", r = 255, g = 0, b = 0, original_case = "lower" }
+	expect.equality(r.add(1, meta), "#ff0000")
+end
+
+additional_engine_tests["hexcolor_blue_component_decrement"] = function()
+	local r = require("mobius.rules.hexcolor")()
+	local meta = { text = "#0000FF", component = "b", r = 0, g = 0, b = 255, original_case = "lower" }
+	expect.equality(r.add(-1, meta), "#0000fe")
+end
+
+-- I. Markdown header boundary
+additional_engine_tests["markdown_header_max_level"] = function()
+	local buf = create_test_buf({ "###### Header" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(before, after)
+end
+
+additional_engine_tests["markdown_header_min_level"] = function()
+	local buf = create_test_buf({ "# Header" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("decrement", { visual = false, seqadd = false, step = 1 })
+	local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(after, { "# Header" })
+end
+
+-- J. Case conversion: tested via mock_tests, covered via add() function
+additional_engine_tests["case_mock_camel_to_snake"] = function()
+	local r = require("mobius.rules.case")({ types = { "camelCase", "snake_case", "PascalCase" } })
+	local meta = { text = "camelCase", case_type = "camelCase", types = { "camelCase", "snake_case", "PascalCase" } }
+	expect.equality(r.add(1, meta), "camel_case")
+end
+
+additional_engine_tests["case_mock_snake_to_pascal"] = function()
+	local r = require("mobius.rules.case")({ types = { "camelCase", "snake_case", "PascalCase" } })
+	local meta = { text = "snake_case", case_type = "snake_case", types = { "camelCase", "snake_case", "PascalCase" } }
+	expect.equality(r.add(1, meta), "SnakeCase")
+end
+
+-- K. Multi-line sequential operations (seqadd) - critical gap
+additional_engine_tests["seqadd_multiline_two_lines"] = function()
+	local buf = create_test_buf({ "1", "1" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 2, 0, {})
+	engine.execute("increment", { visual = true, seqadd = true, step = 1 })
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines[1], "2")
+	expect.equality(lines[2], "3")
+end
+
+additional_engine_tests["seqadd_multiline_three_lines"] = function()
+	local buf = create_test_buf({ "0", "0", "0" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 3, 0, {})
+	engine.execute("increment", { visual = true, seqadd = true, step = 1 })
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines[1], "1")
+	expect.equality(lines[2], "2")
+	expect.equality(lines[3], "3")
+end
+
+-- L. Step modifier and custom operations
+additional_engine_tests["step_custom_value"] = function()
+	local buf = create_test_buf({ "10" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("increment", { visual = false, seqadd = false, step = 5 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "15")
+end
+
+additional_engine_tests["step_decrement_custom"] = function()
+	local buf = create_test_buf({ "100" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute("decrement", { visual = false, seqadd = false, step = 10 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "90")
+end
+
+-- M. Custom rules passed via opts.rules
+additional_engine_tests["opts_rules_override"] = function()
+	local buf = create_test_buf({ "true" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	engine.execute(
+		"increment",
+		{ visual = false, seqadd = false, step = 1, rules = { "mobius.rules.numeric.integer" } }
+	)
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "true")
+end
+
+additional_engine_tests["opts_rules_function_factory"] = function()
+	local buf = create_test_buf({ "foo bar baz" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	-- Function returns a rule table on-demand (lazy-load via function)
+	local rule_factory = function()
+		return {
+			id = "lazy_enum",
+			priority = 50,
+			find = function(cursor)
+				local row, col = cursor.row, cursor.col
+				local b = vim.api.nvim_get_current_buf()
+				local lines = vim.api.nvim_buf_get_lines(b, row, row + 1, false)
+				local line = lines[1] or ""
+				local pattern = "foo"
+				local start, end_pos = line:find(pattern)
+				if start and end_pos >= col + 1 then
+					return { col = start - 1, end_col = end_pos - 1, metadata = { text = line:sub(start, end_pos) } }
+				end
+				return nil
+			end,
+			add = function(addend, metadata)
+				if metadata.text == "foo" then
+					return "bar"
+				elseif metadata.text == "bar" then
+					return "baz"
+				else
+					return "foo"
+				end
+			end,
+		}
+	end
+	engine.execute("increment", { visual = false, seqadd = false, step = 1, rules = { rule_factory } })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "bar bar baz")
+end
+
+additional_engine_tests["opts_rules_custom_inline"] = function()
+	local buf = create_test_buf({ "foo bar baz" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	local custom_rule = {
+		id = "custom_enum",
+		priority = 50,
+		find = function(cursor)
+			local row, col = cursor.row, cursor.col
+			local b = vim.api.nvim_get_current_buf()
+			local lines = vim.api.nvim_buf_get_lines(b, row, row + 1, false)
+			local line = lines[1] or ""
+			local pattern = "foo"
+			local start, end_pos = line:find(pattern)
+			if start and end_pos >= col + 1 then
+				return { col = start - 1, end_col = end_pos - 1, metadata = { text = line:sub(start, end_pos) } }
+			end
+			return nil
+		end,
+		add = function(addend, metadata)
+			if metadata.text == "foo" then
+				return "bar"
+			elseif metadata.text == "bar" then
+				return "baz"
+			else
+				return "foo"
+			end
+		end,
+	}
+	engine.execute("increment", { visual = false, seqadd = false, step = 1, rules = { custom_rule } })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "bar bar baz")
+end
+
+-- N. Error resilience: find() returns invalid metadata
+additional_engine_tests["find_missing_metadata_text"] = function()
+	local buf = create_test_buf({ "123" })
+	vim.api.nvim_win_set_cursor(0, { 1, 0 })
+	local bad_rule = {
+		id = "bad_find",
+		priority = 50,
+		find = function(cursor)
+			local row, col = cursor.row, cursor.col
+			local b = vim.api.nvim_get_current_buf()
+			local lines = vim.api.nvim_buf_get_lines(b, row, row + 1, false)
+			local line = lines[1] or ""
+			local start, end_pos = line:find("%d+")
+			if start and end_pos >= col + 1 then
+				return { col = start - 1, end_col = end_pos - 1, metadata = {} }
+			end
+			return nil
+		end,
+		add = function(addend, metadata)
+			return "0"
+		end,
+	}
+	vim.g.mobius_rules = { bad_rule }
+	local before = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	engine.execute("increment", { visual = false, seqadd = false, step = 1 })
+	local after = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(before, after)
+end
+
+-- O. Multiple matches on same line with visual mode
+additional_engine_tests["visual_multiple_matches_single_line_no_seqadd"] = function()
+	local buf = create_test_buf({ "1 2 3" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 1, 4, {})
+	engine.execute("increment", { visual = true, seqadd = false, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2 3 4")
+end
+
+additional_engine_tests["visual_multiple_matches_single_line_seqadd"] = function()
+	local buf = create_test_buf({ "1 2 3" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 1, 4, {})
+	engine.execute("increment", { visual = true, seqadd = true, step = 1 })
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "2 4 6")
+end
+
+-- ============================================================================
+-- Plugin operator tests (g@ callback: restore cursor to '[ , execute, trigger)
+-- ============================================================================
+local plugin_operator_tests = MiniTest.new_set()
+
+--- Simulate g@ having run with motion "l" on a single char: set '[ and '] (1,0)-indexed.
+local function set_motion_marks(buf, start_line, start_col, end_line, end_col)
+	vim.api.nvim_buf_set_mark(buf, "[", start_line, start_col, {})
+	vim.api.nvim_buf_set_mark(buf, "]", end_line, end_col, {})
+end
+
+plugin_operator_tests["operator_increment_restores_cursor_and_increments"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	-- Simulate cursor was on "1" (col 4), then motion "l" moved to col 5; '[ and '] mark the range.
+	set_motion_marks(buf, 1, 4, 1, 5)
+	vim.api.nvim_win_set_cursor(0, { 1, 5 }) -- cursor "after" motion
+	vim.g.mobius_operator_direction = "increment"
+	vim.g.mobius_operator_cumulative = false
+
+	mobius_plugin.operator_increment("char")
+
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 124 bar")
+end
+
+plugin_operator_tests["operator_decrement_restores_cursor_and_decrements"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	set_motion_marks(buf, 1, 4, 1, 5)
+	vim.api.nvim_win_set_cursor(0, { 1, 5 })
+	vim.g.mobius_operator_direction = "decrement"
+	vim.g.mobius_operator_cumulative = false
+
+	mobius_plugin.operator_decrement("char")
+
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 122 bar")
+end
+
+plugin_operator_tests["operator_increment_uses_motion_start_when_cursor_elsewhere"] = function()
+	local buf = create_test_buf({ "foo 123 bar" })
+	set_motion_marks(buf, 1, 4, 1, 5)
+	vim.api.nvim_win_set_cursor(0, { 1, 0 }) -- cursor not at motion; callback restores to '[
+	vim.g.mobius_operator_direction = "increment"
+	vim.g.mobius_operator_cumulative = false
+
+	mobius_plugin.operator_increment("char")
+
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo 124 bar")
+end
+
+plugin_operator_tests["operator_trigger_sets_global_callback_and_operatorfunc"] = function()
+	local trigger = mobius_plugin.operator_trigger("increment", false)
+	trigger()
+	expect.equality(_G.mobius_operator_callback, mobius_plugin.operator_increment)
+	expect.equality(vim.o.operatorfunc, "v:lua._G.mobius_operator_callback")
+
+	trigger = mobius_plugin.operator_trigger("decrement", true)
+	trigger()
+	expect.equality(_G.mobius_operator_callback, mobius_plugin.operator_decrement)
+	expect.equality(vim.g.mobius_operator_direction, "decrement")
+	expect.equality(vim.g.mobius_operator_cumulative, true)
+end
+
+plugin_operator_tests["operator_callback_no_match_does_not_error"] = function()
+	local buf = create_test_buf({ "foo bar" })
+	set_motion_marks(buf, 1, 0, 1, 1) -- '[ at start of line
+	vim.api.nvim_win_set_cursor(0, { 1, 1 })
+	vim.g.mobius_operator_direction = "increment"
+	vim.g.mobius_operator_cumulative = false
+
+	mobius_plugin.operator_increment("char")
+
+	expect.equality(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], "foo bar")
+end
+
+-- ============================================================================
+-- Blackbox tests (child Neovim + type_keys + buffer comparison)
+-- ============================================================================
+local child = MiniTest.new_child_neovim()
+
+local function child_set_lines(c, lines)
+	if type(lines) == "string" then
+		lines = vim.split(lines, "\n")
+	end
+	c.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+end
+
+local function child_set_cursor(c, line, col)
+	-- line 1-based, col 0-based (nvim_win_set_cursor uses { line, col })
+	c.api.nvim_win_set_cursor(0, { line, col })
+end
+
+local function child_get_lines(c)
+	return c.api.nvim_buf_get_lines(0, 0, -1, false)
+end
+
+-- Cursor in child: returns { line, col } (1-based line, 0-based col, same as nvim_win_get_cursor).
+local function child_get_cursor(c)
+	local pos = c.api.nvim_win_get_cursor(0)
+	return { pos[1], pos[2] }
+end
+
+-- Feed key in child (type_keys) and flush. Used for integer tests to verify keybinding.
+local function child_feedkey(c, key)
+	c.type_keys(key)
+	c.api.nvim_eval("1")
+end
+
+-- Run engine in child (avoids headless key interpretation issues for date/bool/hex/semver).
+local function child_engine_execute(c, direction, step)
+	step = step or 1
+	-- Prepend plugin lua path so require('mobius.engine') resolves in child
+	local path_prefix = plugin_path .. "/lua/?.lua;" .. plugin_path .. "/lua/?/init.lua;"
+	c.lua(
+		"local dir, n, prefix = ...; package.path = prefix .. package.path; require('mobius.engine').execute(dir, { step = n })",
+		{ direction, step, path_prefix }
+	)
+end
+
+local blackbox_tests = MiniTest.new_set({
+	hooks = {
+		pre_case = function()
+			local tmp = vim.fn.tempname() .. ".lua"
+			local f = io.open(tmp, "w")
+			f:write(CHILD_INIT_LUA)
+			f:close()
+			child.restart({ "-u", tmp })
+		end,
+		post_once = function()
+			child.stop()
+		end,
+	},
+})
+
+-- Feedkey blackbox: verify <C-a>/<C-x> keybinding and engine on integer
+blackbox_tests["integer_increment_feedkey"] = function()
+	child_set_lines(child, { "foo 123 bar" })
+	child_set_cursor(child, 1, 4)
+	child_feedkey(child, "<C-a>")
+	expect.equality(child_get_lines(child), { "foo 124 bar" })
+end
+
+blackbox_tests["integer_decrement_feedkey"] = function()
+	child_set_lines(child, { "foo 123 bar" })
+	child_set_cursor(child, 1, 4)
+	child_feedkey(child, "<C-x>")
+	expect.equality(child_get_lines(child), { "foo 122 bar" })
+end
+
+-- Integration tests: runtime + plugin, buffer + text, feedkey, assert buffer text and cursor position
+blackbox_tests["feedkey_integer_increment_text_and_cursor"] = function()
+	child_set_lines(child, { "foo 123 bar" })
+	child_set_cursor(child, 1, 4)
+	child_feedkey(child, "<C-a>")
+	expect.equality(child_get_lines(child), { "foo 124 bar" })
+	-- Engine places cursor at start of replaced text (match.col)
+	expect.equality(child_get_cursor(child), { 1, 4 })
+end
+
+blackbox_tests["feedkey_integer_decrement_text_and_cursor"] = function()
+	child_set_lines(child, { "foo 123 bar" })
+	child_set_cursor(child, 1, 4)
+	child_feedkey(child, "<C-x>")
+	expect.equality(child_get_lines(child), { "foo 122 bar" })
+	expect.equality(child_get_cursor(child), { 1, 4 })
+end
+
+blackbox_tests["feedkey_integer_increment_single_digit_cursor"] = function()
+	child_set_lines(child, { "9" })
+	child_set_cursor(child, 1, 0)
+	child_feedkey(child, "<C-a>")
+	expect.equality(child_get_lines(child), { "10" })
+	expect.equality(child_get_cursor(child), { 1, 0 })
+end
+
+blackbox_tests["feedkey_no_match_buffer_and_cursor_unchanged"] = function()
+	child_set_lines(child, { "foo bar" })
+	child_set_cursor(child, 1, 2)
+	child_feedkey(child, "<C-a>")
+	expect.equality(child_get_lines(child), { "foo bar" })
+	expect.equality(child_get_cursor(child), { 1, 2 })
+end
+
+blackbox_tests["feedkey_integer_cursor_on_second_number"] = function()
+	child_set_lines(child, { "1 2 3" })
+	child_set_cursor(child, 1, 2) -- on "2"
+	child_feedkey(child, "<C-a>")
+	expect.equality(child_get_lines(child), { "1 3 3" })
+	expect.equality(child_get_cursor(child), { 1, 2 })
+end
+
+-- Engine blackbox: set buffer + cursor, call engine.execute in child, compare text
+blackbox_tests["date_iso_month_increment"] = function()
+	child_set_lines(child, { "2022-12-06" })
+	child_set_cursor(child, 1, 6)
+	child_engine_execute(child, "increment", 1)
+	expect.equality(child_get_lines(child), { "2023-01-06" })
+end
+
+blackbox_tests["date_iso_day_increment"] = function()
+	child_set_lines(child, { "2022-12-06" })
+	child_set_cursor(child, 1, 9)
+	child_engine_execute(child, "increment", 1)
+	expect.equality(child_get_lines(child), { "2022-12-07" })
+end
+
+blackbox_tests["bool_toggle"] = function()
+	child_set_lines(child, { "let x = true" })
+	child_set_cursor(child, 1, 9)
+	child_engine_execute(child, "increment", 1)
+	expect.equality(child_get_lines(child), { "let x = false" })
+end
+
+blackbox_tests["semver_patch_increment"] = function()
+	child_set_lines(child, { "version 1.2.3" })
+	child_set_cursor(child, 1, 13)
+	child_engine_execute(child, "increment", 1)
+	expect.equality(child_get_lines(child), { "version 1.2.4" })
+end
+
+blackbox_tests["hexcolor_increment"] = function()
+	child_set_lines(child, { "color: #100000" }) -- R=16, so integer rule does not match whole token
+	child_set_cursor(child, 1, 8) -- on R channel
+	child_engine_execute(child, "increment", 1)
+	expect.equality(child_get_lines(child), { "color: #110000" })
+end
+
+T["additional_engine_tests"] = additional_engine_tests
+T["plugin_operator_tests"] = plugin_operator_tests
+T["blackbox_tests"] = blackbox_tests
+
+return T
