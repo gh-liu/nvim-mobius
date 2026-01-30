@@ -61,9 +61,9 @@ Defaults: plugin sets `g:mobius_rules` on load. Use `init` for filetype rules; s
 
 - **String** — module path, lazy-loaded via `require(...)` (e.g. `"mobius.rules.numeric.integer"`).
 - **Table** — a rule object `{ find, add, ... }` directly.
-- **Function** — called when resolving rules; must return a rule table (or a list of rules).
+- **Function** — called when resolving rules; must return a rule table.
 
-Buffer rules only: the first element may be `true` to inherit `g:mobius_rules`, then append buffer-local entries.
+**Buffer rules (`b:mobius_rules`) only:** if the first element is `true`, it means *inherit*: effective rules = `g:mobius_rules` concatenated with the rest of the buffer list (b[2..]).
 
 ### Basic Setup
 
@@ -228,6 +228,18 @@ Rules.pattern({
   end,
   cyclic = false,
 })
+```
+
+**Constant (toggle) rules** — cycle through a fixed list without writing `find`/`add`. Use `require("mobius.rules.constant")(opts)` with `elements` (flat list or grouped lists), and optional `word`, `cyclic`, `priority`:
+
+```lua
+local constant = require("mobius.rules.constant")
+
+-- Flat list: cycle "let" -> "const" -> "var"
+constant({ elements = { "let", "const", "var" }, word = true })
+
+-- Grouped: cycle within group (e.g. "true"<->"false", "True"<->"False")
+constant({ elements = { { "true", "false" }, { "True", "False" } }, word = true })
 ```
 
 For the full rule interface and pattern options, see `doc/mobius.txt` (`:h mobius-custom-rules`).

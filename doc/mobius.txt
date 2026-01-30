@@ -98,10 +98,14 @@ Example: >
     "mobius.rules.markdown_header" }
 <
 
+For b:mobius_rules only: if the first element is |true|, it means inherit — effective
+rules = g:mobius_rules .. b[2..]. See |b:mobius_rules inherit|.
+
 Each entry may be:
   - A string: module path, lazy-loaded on first use (e.g. "mobius.rules.numeric.integer")
   - A table: full rule definition (|mobius-custom-rules|)
-  - A callable table: e.g. require("mobius.rules.numeric.integer")({ priority = 60 })
+  - A function: called when resolving rules; must return a rule table
+    (e.g. a factory like require("mobius.rules.numeric.integer") used as the list entry)
 
 Customizing pre-built rules: >
   local integer_rule = require("mobius.rules.numeric.integer")
@@ -210,6 +214,16 @@ Pattern helper: >
     end,
     cyclic = false,
   })
+<
+
+Constant (toggle) rules: cycle through a fixed list without writing find/add.
+Use require("mobius.rules.constant")(opts) with elements (flat list or grouped
+lists), and optional word, cyclic, priority. Example: >
+  local constant = require("mobius.rules.constant")
+  -- Flat list: cycle "let" -> "const" -> "var"
+  constant({ elements = { "let", "const", "var" }, word = true })
+  -- Grouped: cycle within group (e.g. "true"<->"false", "True"<->"False")
+  constant({ elements = { { "true", "false" }, { "True", "False" } }, word = true })
 <
 
 ==============================================================================
