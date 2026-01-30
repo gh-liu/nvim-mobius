@@ -1,9 +1,7 @@
 -- mobius.lua - plugin entry point
 --
 -- Normal mode uses g@ operator for native dot-repeat (.). Callbacks and trigger
--- live in lua/mobius/plugin/mobius.lua; operatorfunc points at _G.mobius_operator_callback.
-
-local mobius_plugin = require("mobius.plugin.mobius")
+-- live in mobius module (require("mobius")); operatorfunc points at _G.mobius_operator_callback.
 
 local function plug_opts()
 	return { noremap = true, silent = true }
@@ -12,46 +10,56 @@ end
 -- -----------------------------------------------------------------------------
 -- Normal mode: <Plug> mappings (operator g@ + feed g@l)
 -- -----------------------------------------------------------------------------
-vim.keymap.set("n", "<Plug>(MobiusIncrement)", mobius_plugin.operator_trigger("increment", false), plug_opts())
-vim.keymap.set("n", "<Plug>(MobiusDecrement)", mobius_plugin.operator_trigger("decrement", false), plug_opts())
-vim.keymap.set("n", "<Plug>(MobiusIncrementCumulative)", mobius_plugin.operator_trigger("increment", true), plug_opts())
-vim.keymap.set("n", "<Plug>(MobiusDecrementCumulative)", mobius_plugin.operator_trigger("decrement", true), plug_opts())
-
--- Default keybindings (drop-in for Vim <C-a>/<C-x>); override in config if needed
-vim.keymap.set("n", "<C-a>", "<Plug>(MobiusIncrement)", plug_opts())
-vim.keymap.set("n", "<C-x>", "<Plug>(MobiusDecrement)", plug_opts())
-vim.keymap.set("n", "g<C-a>", "<Plug>(MobiusIncrementCumulative)", plug_opts())
-vim.keymap.set("n", "g<C-x>", "<Plug>(MobiusDecrementCumulative)", plug_opts())
-vim.keymap.set("x", "<C-a>", "<Plug>(MobiusIncrement)", plug_opts())
-vim.keymap.set("x", "<C-x>", "<Plug>(MobiusDecrement)", plug_opts())
-vim.keymap.set("x", "g<C-a>", "<Plug>(MobiusIncrementSeq)", plug_opts())
-vim.keymap.set("x", "g<C-x>", "<Plug>(MobiusDecrementSeq)", plug_opts())
+vim.keymap.set(
+	"n",
+	"<Plug>(MobiusIncrement)",
+	":<c-u>lua require('mobius').operator_trigger('increment', false)()<CR>",
+	plug_opts()
+)
+vim.keymap.set(
+	"n",
+	"<Plug>(MobiusDecrement)",
+	":<c-u>lua require('mobius').operator_trigger('decrement', false)()<CR>",
+	plug_opts()
+)
+vim.keymap.set(
+	"n",
+	"<Plug>(MobiusIncrementCumulative)",
+	":<c-u>lua require('mobius').operator_trigger('increment', true)()<CR>",
+	plug_opts()
+)
+vim.keymap.set(
+	"n",
+	"<Plug>(MobiusDecrementCumulative)",
+	":<c-u>lua require('mobius').operator_trigger('decrement', true)()<CR>",
+	plug_opts()
+)
 
 -- -----------------------------------------------------------------------------
--- Visual mode: <Plug> mappings (direct engine.execute; same/sequential addend)
+-- Visual mode: <Plug> mappings (lazy-load via mobius.execute)
 -- -----------------------------------------------------------------------------
 vim.keymap.set(
 	"x",
 	"<Plug>(MobiusIncrement)",
-	":<c-u>lua require('mobius.engine').execute('increment', { visual = true, seqadd = false, step = vim.v.count1 })<CR>",
+	":<c-u>lua require('mobius').execute('increment', { visual = true, seqadd = false, step = vim.v.count1 })<CR>",
 	plug_opts()
 )
 vim.keymap.set(
 	"x",
 	"<Plug>(MobiusDecrement)",
-	":<c-u>lua require('mobius.engine').execute('decrement', { visual = true, seqadd = false, step = vim.v.count1 })<CR>",
+	":<c-u>lua require('mobius').execute('decrement', { visual = true, seqadd = false, step = vim.v.count1 })<CR>",
 	plug_opts()
 )
 vim.keymap.set(
 	"x",
 	"<Plug>(MobiusIncrementSeq)",
-	":<c-u>lua require('mobius.engine').execute('increment', { visual = true, seqadd = true, step = vim.v.count1 })<CR>",
+	":<c-u>lua require('mobius').execute('increment', { visual = true, seqadd = true, step = vim.v.count1 })<CR>",
 	plug_opts()
 )
 vim.keymap.set(
 	"x",
 	"<Plug>(MobiusDecrementSeq)",
-	":<c-u>lua require('mobius.engine').execute('decrement', { visual = true, seqadd = true, step = vim.v.count1 })<CR>",
+	":<c-u>lua require('mobius').execute('decrement', { visual = true, seqadd = true, step = vim.v.count1 })<CR>",
 	plug_opts()
 )
 

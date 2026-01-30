@@ -49,4 +49,81 @@
 
 local M = {}
 
+-- Global operator state (single table to avoid multiple vim.g.* variables)
+_G._mobius_operator_state = {}
+
+local last_step = 1
+
+local function step_for_count(count)
+	-- Dot-repeat replays "g@l" with no count prefix, so v:count1 is 1; reuse last step.
+	if count == 1 and last_step > 1 then
+		return last_step
+	end
+	last_step = count
+	return count
+end
+
+--- Restore cursor to motion start ('[) so engine runs at the position where user pressed <C-a>.
+--- g@ invokes us after motion "l", so the cursor has already moved one char right.
+local function restore_cursor_to_motion_start()
+	local buf = vim.api.nvim_get_current_buf()
+	local mark = vim.api.nvim_buf_get_mark(buf, "[")
+	-- (1,0)-indexed; (0,0) means mark not set
+	if mark and mark[1] and mark[1] >= 1 then
+		vim.api.nvim_win_set_cursor(0, { mark[1], mark[2] })
+	end
+end
+
+---@param _ "line"|"char"|"block" motion type from g@ (unused; we use '[ for position)
+function M.operator_increment(_)
+	local state = _G._mobius_operator_state
+	local direction = state.direction or "increment"
+	local cumulative = state.cumulative or false
+	local initial_count = state.count or 1
+	local count = step_for_count(initial_count)
+
+	restore_cursor_to_motion_start()
+
+	local ok, err = pcall(require("mobius.engine").execute, direction, {
+		visual = false,
+		seqadd = false,
+		step = count,
+		cumulative = cumulative,
+	})
+	if not ok then
+		vim.notify("[mobius] " .. tostring(err), vim.log.levels.ERROR)
+	end
+end
+
+---@param vmode "line"|"char"|"block"
+function M.operator_decrement(vmode)
+	vim.g.mobius_operator_direction = "decrement"
+	return M.operator_increment(vmode)
+end
+
+--- Returns a keymap callback: set operator state, register callback in _G, set operatorfunc, feed g@l.
+---@param direction "increment"|"decrement"
+---@param cumulative boolean
+---@return fun()
+function M.operator_trigger(direction, cumulative)
+	return function()
+		_G._mobius_operator_state = {
+			direction = direction,
+			cumulative = cumulative,
+			count = vim.v.count1,
+		}
+		_G.mobius_operator_callback = (direction == "decrement" and M.operator_decrement or M.operator_increment)
+		vim.opt.operatorfunc = "v:lua._G.mobius_operator_callback"
+		vim.api.nvim_feedkeys("g@l", "n", false)
+	end
+end
+
+--- Wrapper for visual mode execute (lazy-load engine on demand).
+---@param direction "increment"|"decrement"
+---@param opts {visual: boolean, seqadd: boolean, step: number}
+---@return nil
+function M.execute(direction, opts)
+	require("mobius.engine").execute(direction, opts)
+end
+
 return M
