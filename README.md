@@ -13,24 +13,24 @@ A powerful and extensible Neovim plugin that intelligently increments/decrements
 
 ### Supported Scenarios
 
-| Scenario | Example |
-|----------|---------|
-| Integer | `1` ↔ `2` ↔ `3`, supports `10<C-a>` |
-| Decimal | `1.5` ↔ `2.5`, preserves decimal places |
-| Hex | `0xFF` ↔ `0x100` |
-| Octal | `0o755` ↔ `0o756` |
-| Boolean | `true` ↔ `false` (also `True`/`False`, `TRUE`/`FALSE`) |
-| Toggle | `on` ↔ `off`, `yes` ↔ `no` |
-| Operators | `&&` ↔ `\|\|`, `and` ↔ `or` |
-| HTTP methods | `GET` ↔ `POST` ↔ `PUT` ↔ `DELETE` |
-| Brackets | `()` ↔ `[]` ↔ `{}` (handles nesting) |
-| Markdown headings | `#` ↔ `##` ↔ `###` |
-| Date | `2024/01/15` ↔ `2024/02/15` |
-| RGB color | `rgb(100, 100, 100)` per-component increment |
-| HTML tags | `<div>` ↔ `<span>` ↔ `<p>` |
-| File paths | Relative/absolute path increment/decrement |
-| Tree-sitter | Match by AST node type |
-| LSP enum | Get config/options via LSP |
+| Scenario | Example | 默认 |
+|----------|---------|:----:|
+| Integer | `1` ↔ `2` ↔ `3`, supports `10<C-a>` | ✓ |
+| Decimal | `1.5` ↔ `2.5`, preserves decimal places | |
+| Hex | `0xFF` ↔ `0x100` | ✓ |
+| Octal | `0o755` ↔ `0o756` | |
+| Boolean | `true` ↔ `false` (also `True`/`False`, `TRUE`/`FALSE`) | ✓ |
+| Toggle | `on` ↔ `off`, `yes` ↔ `no` | ✓ |
+| Operators | `&&` ↔ `\|\|`, `and` ↔ `or` | |
+| HTTP methods | `GET` ↔ `POST` ↔ `PUT` ↔ `DELETE` | |
+| Brackets | `()` ↔ `[]` ↔ `{}` (handles nesting) | |
+| Markdown headings | `#` ↔ `##` ↔ `###` | |
+| Date | `2024/01/15` ↔ `2024/02/15` | |
+| RGB color | `rgb(100, 100, 100)` per-component increment | |
+| HTML tags | `<div>` ↔ `<span>` ↔ `<p>` | |
+| File paths | Relative/absolute path increment/decrement | |
+| Tree-sitter | Match by AST node type | |
+| LSP enum | Get config/options via LSP | |
 
 ---
 
