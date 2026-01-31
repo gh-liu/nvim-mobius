@@ -134,9 +134,16 @@ function M.add(addend, metadata)
 
 		local new_text = new_sign .. tostring(new_int_abs) .. "." .. frac_part
 
+		-- Preserve positive sign if original had it and result is still non-negative
+		local has_positive_sign = original_text:match("^%+")
+		if has_positive_sign and not new_text:match("^%-") then
+			new_text = "+" .. new_text
+		end
+
 		-- Cursor stays on integer part (at the end)
 		local int_len = #tostring(new_int_abs)
-		local sign_len = #new_sign
+		local final_sign = new_text:match("^([+-])") or ""
+		local sign_len = #final_sign
 		return { text = new_text, cursor = sign_len + int_len - 1 }
 	else
 		-- Cursor after decimal: add/subtract in the smallest decimal unit (last digit)
@@ -148,27 +155,37 @@ function M.add(addend, metadata)
 			return nil
 		end
 
-		local frac_val = tonumber(frac_part)
 		local decimal_places = #frac_part
 		-- Add in the smallest unit: addend * 10^(-decimal_places)
 		local frac_addend = addend * (10 ^ -decimal_places)
 
-		local int_val = tonumber(integer_part)
-		local full_val = int_val + frac_val / (10 ^ decimal_places)
-		local new_full_val = full_val + frac_addend
-
-		-- Check for sign in original
-		local sign = ""
-		local sign_match = original_text:match("^([+-])")
-		if sign_match then
-			sign = sign_match
+		-- Use original signed value to preserve sign semantics
+		-- For negative numbers: increment moves toward zero, decrement moves away
+		local original_value = metadata.value or tonumber(original_text)
+		if not original_value then
+			return nil
 		end
 
-		-- Format result preserving decimal places
-		local new_text = string.format("%s%." .. decimal_places .. "f", sign, new_full_val)
+		local new_full_val = original_value + frac_addend
+
+		-- Determine sign of result
+		local result_sign = ""
+		if new_full_val < 0 then
+			result_sign = "-"
+		end
+
+		-- Format result preserving decimal places (use absolute value for formatting)
+		local new_text = string.format("%s%." .. decimal_places .. "f", result_sign, math.abs(new_full_val))
+
+		-- Preserve positive sign if original had it and result is still non-negative
+		local has_positive_sign = original_text:match("^%+")
+		if has_positive_sign and not new_text:match("^%-") then
+			new_text = "+" .. new_text
+		end
 
 		-- Cursor on the last decimal digit (the one we modified)
-		local sign_len = #sign
+		local final_sign = new_text:match("^([+-])") or ""
+		local sign_len = #final_sign
 		local int_part_new = tostring(math.floor(math.abs(new_full_val)))
 		local cursor_on_digit = sign_len + #int_part_new + decimal_places -- 0-indexed
 		return { text = new_text, cursor = cursor_on_digit }

@@ -33,6 +33,9 @@ local rules = {
   require("mobius.rules.semver")(),
 }
 vim.g.mobius_rules = rules
+-- Set up keybindings for tests
+vim.keymap.set("n", "<C-a>", "<Plug>(MobiusIncrement)", { noremap = false })
+vim.keymap.set("n", "<C-x>", "<Plug>(MobiusDecrement)", { noremap = false })
 ]]
 
 local child = MiniTest.new_child_neovim()

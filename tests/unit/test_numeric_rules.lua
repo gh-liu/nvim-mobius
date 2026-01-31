@@ -225,4 +225,117 @@ end
 
 T["decimal_fraction"] = decimal_tests
 
+-- ============================================================================
+-- Integer Rule: Carry and Boundary Tests
+-- ============================================================================
+local integer_carry_tests = MiniTest.new_set()
+
+integer_carry_tests["single_digit_to_double"] = function()
+	expect.equality(rules_integer.add(1, { text = "9" }), "10")
+end
+
+integer_carry_tests["double_digit_to_triple"] = function()
+	expect.equality(rules_integer.add(1, { text = "99" }), "100")
+end
+
+integer_carry_tests["triple_digit_to_quad"] = function()
+	expect.equality(rules_integer.add(1, { text = "999" }), "1000")
+end
+
+integer_carry_tests["large_number_carry"] = function()
+	expect.equality(rules_integer.add(1, { text = "999999" }), "1000000")
+end
+
+integer_carry_tests["decrement_from_zero"] = function()
+	expect.equality(rules_integer.add(-1, { text = "0" }), "-1")
+end
+
+integer_carry_tests["decrement_from_single_negative"] = function()
+	expect.equality(rules_integer.add(-1, { text = "-1" }), "-2")
+end
+
+integer_carry_tests["increment_from_negative_to_zero"] = function()
+	expect.equality(rules_integer.add(1, { text = "-1" }), "0")
+end
+
+T["integer_carry"] = integer_carry_tests
+
+-- ============================================================================
+-- Hex Rule: Extended Tests
+-- ============================================================================
+local hex_extended_tests = MiniTest.new_set()
+
+hex_extended_tests["hex_digit_overflow_to_next_digit"] = function()
+	expect.equality(rules_hex.add(1, { text = "0x0f", value = 15 }), "0x10")
+end
+
+hex_extended_tests["hex_two_digit_overflow"] = function()
+	expect.equality(rules_hex.add(1, { text = "0xff", value = 255 }), "0x100")
+end
+
+hex_extended_tests["hex_decrement_from_zero_wraps"] = function()
+	expect.equality(rules_hex.add(-1, { text = "0x00", value = 0 }), "0xff")
+end
+
+hex_extended_tests["hex_preserves_0x_prefix_lowercase"] = function()
+	expect.equality(rules_hex.add(1, { text = "0xab", value = 171 }), "0xac")
+end
+
+hex_extended_tests["hex_preserves_0X_prefix_uppercase"] = function()
+	expect.equality(rules_hex.add(1, { text = "0XAB", value = 171 }), "0XAC")
+end
+
+hex_extended_tests["hex_find_with_cursor"] = function()
+	local buf = create_test_buf({ "color: 0xFF" })
+	local match = rules_hex.find({ row = 0, col = 8 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "0xFF")
+		-- Hex rules don't use cursor_offset currently
+	end
+end
+
+T["hex_extended"] = hex_extended_tests
+
+-- ============================================================================
+-- Octal Rule: Extended Tests
+-- ============================================================================
+local octal_extended_tests = MiniTest.new_set()
+
+octal_extended_tests["octal_digit_overflow_to_next_digit"] = function()
+	expect.equality(rules_octal.add(1, { text = "0o07", value = 7 }), "0o10")
+end
+
+octal_extended_tests["octal_max_digit_overflow"] = function()
+	expect.equality(rules_octal.add(1, { text = "0o77", value = 63 }), "0o100")
+end
+
+octal_extended_tests["octal_decrement_from_zero_wraps"] = function()
+	expect.equality(rules_octal.add(-1, { text = "0o00", value = 0 }), "0o77")
+end
+
+octal_extended_tests["octal_preserves_0o_prefix"] = function()
+	expect.equality(rules_octal.add(1, { text = "0o12", value = 10 }), "0o13")
+end
+
+octal_extended_tests["octal_find_basic"] = function()
+	local buf = create_test_buf({ "perms: 0o755" })
+	local match = rules_octal.find({ row = 0, col = 8 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "0o755")
+	end
+end
+
+octal_extended_tests["octal_find_with_0O_prefix"] = function()
+	local buf = create_test_buf({ "perms: 0O755" })
+	local match = rules_octal.find({ row = 0, col = 8 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "0O755")
+	end
+end
+
+T["octal_extended"] = octal_extended_tests
+
 return T

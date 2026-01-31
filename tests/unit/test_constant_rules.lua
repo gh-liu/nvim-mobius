@@ -288,4 +288,64 @@ end
 
 T["and_or"] = and_or_tests
 
+-- ============================================================================
+-- Constant Rules: Cursor and Edge Cases
+-- ============================================================================
+local constant_cursor_tests = MiniTest.new_set()
+
+constant_cursor_tests["bool_cursor_on_true"] = function()
+	local buf = create_test_buf({ "let is_valid = true" })
+	local match = rules_bool.find({ row = 0, col = 16 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "true")
+		-- Cursor position is tracked but bool rule doesn't modify based on it
+	end
+end
+
+constant_cursor_tests["yes_no_cursor_on_yes"] = function()
+	local buf = create_test_buf({ "confirmed: yes" })
+	local match = rules_yes_no.find({ row = 0, col = 12 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "yes")
+	end
+end
+
+constant_cursor_tests["on_off_cursor_on_on"] = function()
+	local buf = create_test_buf({ "enabled: on" })
+	local match = rules_on_off.find({ row = 0, col = 10 })
+	expect.equality(match ~= nil, true)
+	if match then
+		expect.equality(match.metadata.text, "on")
+	end
+end
+
+constant_cursor_tests["bool_case_preserved_on_toggle"] = function()
+	-- True -> False (case preserved)
+	expect.equality(rules_bool.add(1, { text = "True" }), "False")
+	-- FALSE -> TRUE (case preserved)
+	expect.equality(rules_bool.add(1, { text = "FALSE" }), "TRUE")
+end
+
+constant_cursor_tests["yes_no_case_preserved_on_toggle"] = function()
+	expect.equality(rules_yes_no.add(1, { text = "Yes" }), "No")
+	expect.equality(rules_yes_no.add(1, { text = "NO" }), "YES")
+end
+
+constant_cursor_tests["multiple_toggles_cycle_back"] = function()
+	-- true -> false -> true -> false
+	expect.equality(rules_bool.add(1, { text = "true" }), "false")
+	expect.equality(rules_bool.add(1, { text = "false" }), "true")
+	expect.equality(rules_bool.add(1, { text = "true" }), "false")
+end
+
+constant_cursor_tests["http_method_full_cycle_with_large_addend"] = function()
+	-- Addend larger than cycle length should wrap
+	local cycle_len = 7 -- GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS
+	expect.equality(rules_http_method.add(14, { text = "GET" }), "GET") -- 2 full cycles
+end
+
+T["constant_cursor"] = constant_cursor_tests
+
 return T
