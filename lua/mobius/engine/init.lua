@@ -310,14 +310,41 @@ function M.execute(direction, opts)
 
 		local start_row = start_pos[1] - 1
 		local end_row = end_pos[1] - 1
+		
+		-- Determine if this is block selection (same col range for all rows)
+		-- or char selection (different col ranges per row)
+		-- Heuristic: if start_col == end_col, it's block mode; otherwise char mode
+		local is_block_selection = start_pos[2] == end_pos[2]
 
 		-- Collect all matches in the selection
 		local matches = {}
 
 		for row = start_row, end_row do
 			local col_start = 0
-			if row == start_row then
+			local col_end = nil
+			
+			if is_block_selection then
+				-- Block selection: same column for all rows
 				col_start = start_pos[2]
+				col_end = start_pos[2]
+			else
+				-- Char selection: different columns per row
+				if row == start_row then
+					col_start = start_pos[2]
+					-- For single row or start row, don't limit end
+					if row ~= end_row then
+						col_end = nil  -- to end of line
+					else
+						col_end = end_pos[2]  -- single row: use end_pos[2]
+					end
+				elseif row == end_row then
+					col_start = 0
+					col_end = end_pos[2]
+				else
+					-- Middle rows
+					col_start = 0
+					col_end = nil  -- to end of line
+				end
 			end
 
 			-- Find all matches in this row by checking each position
@@ -328,7 +355,9 @@ function M.execute(direction, opts)
 
 			-- Try finding matches at each position, collecting unique ones
 			local seen_matches = {}
-			for try_col = col_start, #line - 1 do
+			local max_try_col = col_end ~= nil and math.min(col_end, #line - 1) or (#line - 1)
+			
+			for try_col = col_start, max_try_col do
 				local matched = find_match({ row = row, col = try_col }, opts)
 				if matched then
 					local key = matched.match.col .. ":" .. matched.match.end_col

@@ -330,6 +330,39 @@ paren_tests["cursor_inside_content_no_match"] = function()
 	expect.equality(match, nil)
 end
 
+paren_tests["cursor_outside_brackets_no_match"] = function()
+	-- Cursor before opening bracket should not match
+	local buf = create_test_buf({ "zzzz()" })
+	local match = rules_paren.find({ row = 0, col = 0 })
+	expect.equality(match, nil)
+end
+
+paren_tests["visual_block_column_before_brackets"] = function()
+	-- When cursor is on first column and brackets are at end, should not match
+	local buf = create_test_buf({ "abcd()" })
+	-- Cursor at col 0 (before any brackets)
+	local match = rules_paren.find({ row = 0, col = 0 })
+	expect.equality(match, nil)
+end
+
+paren_tests["visual_block_multiple_lines_before_brackets"] = function()
+	-- Simulate visual block selection of first column on multiple lines
+	-- Line 1: "zzzz()", cursor at col 0
+	-- Line 2: "sdfasd[]", cursor at col 0
+	-- Line 3: "asdfas{}", cursor at col 0
+	local buf = create_test_buf({ "zzzz()", "sdfasd[]", "asdfas{}" })
+	
+	-- Cursor on col 0 of each line should not match any brackets
+	local match1 = rules_paren.find({ row = 0, col = 0 })
+	expect.equality(match1, nil)
+	
+	local match2 = rules_paren.find({ row = 1, col = 0 })
+	expect.equality(match2, nil)
+	
+	local match3 = rules_paren.find({ row = 2, col = 0 })
+	expect.equality(match3, nil)
+end
+
 T["paren"] = paren_tests
 
 -- ============================================================================

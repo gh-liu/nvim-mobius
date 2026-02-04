@@ -100,9 +100,12 @@ function M.find(cursor)
 		return { text = text, open = match.open, close = match.close, inner = inner }
 	end)
 
-	-- Only apply when cursor is on the open or close bracket, not on content inside
-	if best and (col ~= best.col and col ~= best.end_col) then
-		return nil
+	-- Only apply when cursor is directly on the open or close bracket
+	if best then
+		-- Reject if cursor is not on bracket itself (either inside content or outside)
+		if col ~= best.col and col ~= best.end_col then
+			return nil
+		end
 	end
 	return best
 end

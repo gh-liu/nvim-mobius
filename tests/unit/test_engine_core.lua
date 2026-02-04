@@ -568,6 +568,35 @@ visual_comprehensive_tests["visual_mixed_types_priority_decides"] = function()
 	expect.equality(lines[2], "false")
 end
 
+visual_comprehensive_tests["visual_selection_respects_boundary"] = function()
+	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
+	-- Test that visual selection respects end boundary
+	-- Line: "10 20 30" - select only "10 20" part (columns 0-4)
+	local buf = create_test_buf({ "10 20 30" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 1, 4, {})
+	engine.execute("decrement", { visual = true, seqadd = false, step = 1 })
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	-- Only "10" and "20" should decrement, "30" should not be touched
+	expect.equality(lines[1], "9 19 30")
+end
+
+visual_comprehensive_tests["visual_multiline_respects_end_boundary"] = function()
+	vim.g.mobius_rules = { "mobius.rules.numeric.integer" }
+	-- Test multiline selection respecting end boundary
+	-- Vim visual selection: start at (1, 0), end at (2, 4)
+	-- Means: line 1 full, line 2 columns 0-4
+	local buf = create_test_buf({ "10 20 30", "10 20 30" })
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 2, 4, {})
+	engine.execute("decrement", { visual = true, seqadd = false, step = 1 })
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	-- Line 1: all three numbers should decrement
+	expect.equality(lines[1], "9 19 29")
+	-- Line 2: only "10" and "20" should decrement, "30" stays
+	expect.equality(lines[2], "9 19 30")
+end
+
 T["visual_comprehensive"] = visual_comprehensive_tests
 
 -- ============================================================================
@@ -686,5 +715,53 @@ cumulative_tests["cumulative_direction_switch"] = function()
 end
 
 T["cumulative"] = cumulative_tests
+
+-- ============================================================================
+-- Visual Block Edge Cases (paren rule fix verification)
+-- ============================================================================
+local visual_block_edge_cases = MiniTest.new_set()
+
+visual_block_edge_cases["visual_block_first_column_should_not_affect_brackets"] = function()
+	-- Bug fix: visual block selection of first column should not affect brackets at end
+	vim.g.mobius_rules = {
+		"mobius.rules.numeric.integer",
+		"mobius.rules.paren",
+	}
+	local buf = create_test_buf({ "zzzz()", "sdfasd[]", "asdfas{}" })
+	
+	-- Select first column (col 0) on all 3 lines
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 0, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 3, 0, {})
+	
+	-- Execute decrement in visual mode
+	engine.execute("decrement", { visual = true })
+	
+	-- Brackets should remain unchanged (no numeric match, no cursor on bracket)
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines[1], "zzzz()")
+	expect.equality(lines[2], "sdfasd[]")
+	expect.equality(lines[3], "asdfas{}")
+end
+
+visual_block_edge_cases["visual_block_should_only_match_within_selection"] = function()
+	vim.g.mobius_rules = {
+		"mobius.rules.numeric.integer",
+		"mobius.rules.paren",
+	}
+	local buf = create_test_buf({ "abc(123)" })
+	
+	-- Select columns 4-6 (the "123" part)
+	vim.api.nvim_buf_set_mark(buf, "<", 1, 4, {})
+	vim.api.nvim_buf_set_mark(buf, ">", 1, 6, {})
+	
+	-- Execute increment
+	engine.execute("increment", { visual = true })
+	
+	-- Only "123" should be incremented (within selection range)
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	expect.equality(lines[1], "abc(124)")
+end
+
+T["visual_block_edge_cases"] = visual_block_edge_cases
 
 return T
